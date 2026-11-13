@@ -1,0 +1,179 @@
+import com.android.build.api.variant.FilterConfiguration
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+}
+
+android {
+    namespace = "com.safiislam.nexvault"
+    compileSdk {
+        version = release(37)
+    }
+
+    defaultConfig {
+        applicationId = "com.safiislam.nexvault"
+        minSdk = 26
+        targetSdk = 37
+        versionCode = libs.versions.appVersionCode.get().toInt()
+        versionName = libs.versions.appVersion.get()
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Public Firebase identifiers (the Web API key is not a secret). Empty = cloud account disabled.
+        val firebaseApiKey = providers.gradleProperty("FIREBASE_API_KEY")
+            .orElse(providers.environmentVariable("FIREBASE_API_KEY")).orElse("").get()
+        val firebaseProjectId = providers.gradleProperty("FIREBASE_PROJECT_ID")
+            .orElse(providers.environmentVariable("FIREBASE_PROJECT_ID")).orElse("").get()
+        buildConfigField("String", "FIREBASE_API_KEY", "\"$firebaseApiKey\"")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$firebaseProjectId\"")
+    }
+
+    val splitAbis = providers.gradleProperty("splitAbis").orNull?.toBoolean() ?: true
+    splits {
+        abi {
+            isEnable = splitAbis
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = splitAbis
+        }
+    }
+
+    val ciKeystore = System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        create("release") {
+            if (ciKeystore != null) {
+                storeFile = file(ciKeystore)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            } else {
+                // Personal build key kept in the repo so every build has the SAME signature and
+                // installs over the previous one. For a public store release use your own secret key.
+                storeFile = file("keystore/cloudnest.jks")
+                storePassword = "cloudnest-personal"
+                keyAlias = "cloudnest"
+                keyPassword = "cloudnest-personal"
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+}
+
+@Suppress("UnstableApiUsage")
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            val abi = output.filters
+                .find { it.filterType == FilterConfiguration.FilterType.ABI }
+                ?.identifier
+                ?: "universal"
+            val extension = output.outputFileName.get().substringAfterLast('.')
+            output.outputFileName.set(
+                output.versionName.map { version ->
+                    "${rootProject.name}-$version-$abi-${variant.buildType}.$extension"
+                }
+            )
+        }
+    }
+}
+
+dependencies {
+    implementation(project(":shared"))
+    implementation(project(":ui"))
+
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.google.android.material)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.material3.adaptive)
+    implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.service)
+
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
+
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.android)
+    implementation(libs.koin.compose.viewmodel)
+    implementation(libs.koin.androidx.workmanager)
+
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.room.paging)
+
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.paging.runtime)
+
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.datasource)
+    if (providers.gradleProperty("withFfmpegDecoder").isPresent) {
+        implementation(libs.androidx.media3.decoder.ffmpeg)
+    }
+
+    implementation(libs.coil.compose)
+    implementation(libs.coil.video)
+    implementation(libs.telephoto.zoomable.coil)
+
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.exifinterface)
+    implementation(libs.zip4j)
+    implementation(libs.zxing.core)
+    implementation(libs.tdlib)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.koin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.androidx.room.testing)
+
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.work.testing)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+}

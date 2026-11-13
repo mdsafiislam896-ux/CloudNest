@@ -1,0 +1,808 @@
+package com.safiislam.nexvault.presentation.files
+
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.navigation.toRoute
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import com.safiislam.nexvault.core.common.AppResult
+import com.safiislam.nexvault.core.files.DeleteConsentRequest
+import com.safiislam.nexvault.core.files.FileImporter
+import com.safiislam.nexvault.core.files.MimeTypes
+import com.safiislam.nexvault.core.files.PendingShare
+import com.safiislam.nexvault.domain.model.DriveFile
+import com.safiislam.nexvault.domain.model.DriveFolder
+import com.safiislam.nexvault.domain.model.FileQuerySpec
+import com.safiislam.nexvault.domain.model.FileSortField
+import com.safiislam.nexvault.domain.model.SortDirection
+import com.safiislam.nexvault.domain.model.UserPreferences
+import com.safiislam.nexvault.domain.repository.FileRepository
+import com.safiislam.nexvault.domain.repository.SettingsRepository
+import com.safiislam.nexvault.domain.repository.SyncRepository
+import com.safiislam.nexvault.domain.repository.TransferRepository
+import com.safiislam.nexvault.domain.repository.TrashRepository
+import com.safiislam.nexvault.domain.usecase.MakeAvailableOfflineUseCase
+import com.safiislam.nexvault.presentation.common.ListPosition
+import com.safiislam.nexvault.presentation.common.UiText
+import com.safiislam.nexvault.presentation.common.toUiText
+import com.safiislam.nexvault.presentation.components.GridZoomLevel
+import com.safiislam.nexvault.presentation.components.SelectionCapabilities
+import com.safiislam.nexvault.presentation.components.zoomedIn
+import com.safiislam.nexvault.presentation.components.zoomedOut
+import com.safiislam.nexvault.presentation.navigation.Route
+import com.safiislam.nexvault.resources.Res
+import com.safiislam.nexvault.resources.files_copied_all
+import com.safiislam.nexvault.resources.files_copied_partial
+import com.safiislam.nexvault.resources.files_import_copied
+import com.safiislam.nexvault.resources.files_import_duplicates
+import com.safiislam.nexvault.resources.files_import_failed
+import com.safiislam.nexvault.resources.files_import_preparing
+import com.safiislam.nexvault.resources.files_import_restored
+import com.safiislam.nexvault.resources.files_import_uploading
+import com.safiislam.nexvault.resources.files_import_uploading_copied
+import com.safiislam.nexvault.resources.files_import_uploading_duplicates
+import com.safiislam.nexvault.resources.files_import_uploading_failed
+import com.safiislam.nexvault.resources.files_import_uploading_restored
+import com.safiislam.nexvault.resources.files_moving_to_trash
+import com.safiislam.nexvault.resources.files_queued_for_download
+import com.safiislam.nexvault.resources.files_queued_for_upload
+import com.safiislam.nexvault.resources.files_queued_partial
+import com.safiislam.nexvault.resources.files_kept_offline_copies
+import com.safiislam.nexvault.resources.files_removed_local_copies
+import com.safiislam.nexvault.resources.files_root_name
+import com.safiislam.nexvault.resources.files_share_needs_local
+import com.safiislam.nexvault.resources.files_sync_result
+import com.safiislam.nexvault.resources.message_moved_count
+import com.safiislam.nexvault.resources.message_moved_to_trash_count
+import com.safiislam.nexvault.resources.message_nothing_to_download
+import com.safiislam.nexvault.resources.note_not_editable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class FilesViewModel(
+    savedStateHandle: SavedStateHandle,
+    private val fileRepository: FileRepository,
+    private val trashRepository: TrashRepository,
+    private val transferRepository: TransferRepository,
+    private val settingsRepository: SettingsRepository,
+    private val syncRepository: SyncRepository,
+    private val fileImporter: FileImporter,
+    private val pendingShare: PendingShare,
+    private val makeAvailableOffline: MakeAvailableOfflineUseCase,
+    private val channelRepository: com.safiislam.nexvault.domain.repository.ChannelRepository
+) : ViewModel() {
+
+    private val tab = kotlinx.coroutines.flow.MutableStateFlow(FilesTab.BROWSE)
+
+    fun selectTab(value: FilesTab) {
+        tab.value = value
+    }
+
+    fun switchDrive(chatId: Long) {
+        viewModelScope.launch { channelRepository.switchTo(chatId) }
+    }
+
+
+    private val folderId: String? = savedStateHandle.toRoute<Route.Files>().folderId
+
+    val listPosition = ListPosition(savedStateHandle)
+
+    private val selection = MutableStateFlow<Set<String>>(emptySet())
+    private val folderSelection = MutableStateFlow<Set<String>>(emptySet())
+
+    private val _working = MutableStateFlow<UiText?>(null)
+    val working: StateFlow<UiText?> = _working.asStateFlow()
+
+    private var rangeBase: Pair<Set<String>, Set<String>>? = null
+    private val _allSelected = MutableStateFlow(false)
+    val allSelected: StateFlow<Boolean> = _allSelected.asStateFlow()
+
+    private val _messages = MutableSharedFlow<UiText>(extraBufferCapacity = 8)
+    val messages = _messages.asSharedFlow()
+
+    private val _folderInfoTarget = MutableStateFlow<DriveFolder?>(null)
+    val folderInfoTarget: StateFlow<DriveFolder?> = _folderInfoTarget.asStateFlow()
+
+    private val _editRequests = MutableSharedFlow<EditNoteRequest>(extraBufferCapacity = 2)
+    val editRequests = _editRequests.asSharedFlow()
+
+    private val _shareRequests = MutableSharedFlow<ShareRequest>(extraBufferCapacity = 2)
+    val shareRequests = _shareRequests.asSharedFlow()
+
+    private val _infoTarget = MutableStateFlow<DriveFile?>(null)
+    val infoTarget: StateFlow<DriveFile?> = _infoTarget.asStateFlow()
+
+    private val _copying = MutableStateFlow(false)
+    val copying: StateFlow<Boolean> = _copying.asStateFlow()
+
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
+    fun refresh() {
+        if (_refreshing.value) return
+        _refreshing.update { true }
+        viewModelScope.launch {
+            val startedAt = System.currentTimeMillis()
+            when (val result = syncRepository.fullResync()) {
+                is AppResult.Success -> {
+                    val stats = result.value
+                    if (stats.inserted > 0 || stats.updated > 0) {
+                        _messages.tryEmit(
+                            UiText.Resource(
+                                Res.string.files_sync_result,
+                                stats.inserted,
+                                stats.updated
+                            )
+                        )
+                    }
+                }
+
+                is AppResult.Failure -> _messages.tryEmit(result.error.toUiText())
+            }
+            val elapsed = System.currentTimeMillis() - startedAt
+            if (elapsed < MIN_REFRESH_VISIBLE_MS) delay((MIN_REFRESH_VISIBLE_MS - elapsed).milliseconds)
+            _refreshing.update { false }
+        }
+    }
+
+    private val currentFolder: Flow<DriveFolder?> = folderFlow()
+
+    private val querySpec: Flow<FileQuerySpec> =
+        combine(settingsRepository.preferences, currentFolder, tab) { prefs, folder, currentTab ->
+            when (currentTab) {
+                FilesTab.BROWSE -> FileQuerySpec(
+                    folderId = folderId,
+                    filterByFolder = true,
+                    showHidden = folder?.isHidden == true,
+                    showArchived = folder?.isArchived == true,
+                    sortField = prefs.sortField,
+                    sortDirection = prefs.sortDirection
+                )
+
+                FilesTab.RECENTS -> FileQuerySpec(
+                    filterByFolder = false,
+                    sortField = com.safiislam.nexvault.domain.model.FileSortField.DATE_ADDED,
+                    sortDirection = com.safiislam.nexvault.domain.model.SortDirection.DESCENDING
+                )
+
+                FilesTab.FAVORITES -> FileQuerySpec(
+                    filterByFolder = false,
+                    favoritesOnly = true,
+                    sortField = prefs.sortField,
+                    sortDirection = prefs.sortDirection
+                )
+            }
+        }.distinctUntilChanged()
+
+    val pagedFiles: Flow<PagingData<DriveFile>> = querySpec
+        .flatMapLatest { fileRepository.pagedFiles(it) }
+        .cachedIn(viewModelScope)
+
+    /**
+     * Follows the selected rows, so an action taken from the menu updates the menu that is still
+     * open.
+     */
+    private val selectionCapabilities: Flow<Pair<Set<String>, SelectionCapabilities>> = selection
+        .flatMapLatest { ids ->
+            if (ids.isEmpty()) {
+                flowOf(ids to SelectionCapabilities.of(emptyList()))
+            } else {
+                flow {
+                    fileRepository.reconcileLocalCopies(ids.toList())
+                    emitAll(
+                        fileRepository.observeFilesByIds(ids.toList())
+                            .map { files -> ids to SelectionCapabilities.of(files) }
+                    )
+                }
+            }
+        }
+
+    private val baseState: Flow<FilesUiState> = combine(
+        settingsRepository.preferences,
+        selectionCapabilities,
+        folderSelection,
+        currentFolder,
+        combine(settingsRepository.preferences, currentFolder) { prefs, folder ->
+            prefs to folder
+        }.flatMapLatest { (prefs, folder) ->
+            fileRepository.observeFolders(
+                parentId = folderId,
+                showHidden = folder?.isHidden == true,
+                showArchived = folder?.isArchived == true,
+                sortField = prefs.sortField,
+                sortDirection = prefs.sortDirection
+            )
+        }
+    ) { prefs: UserPreferences, selectionState, selectedFolders, folder, folders ->
+        val (selected, capabilities) = selectionState
+        FilesUiState(
+            folderId = folderId,
+            folderName = folder?.name?.let(UiText::Plain)
+                ?: UiText.Resource(Res.string.files_root_name),
+            breadcrumbs = breadcrumbsFor(folder),
+            folders = folders,
+            selection = selected,
+            folderSelection = selectedFolders,
+            viewMode = prefs.viewMode,
+            gridSize = prefs.gridSize,
+            sortField = prefs.sortField,
+            sortDirection = prefs.sortDirection,
+            showHidden = prefs.showHiddenFiles,
+            loaded = true,
+            capabilities = capabilities
+        )
+    }
+
+    val uiState: StateFlow<FilesUiState> = combine(
+        baseState,
+        tab,
+        channelRepository.observeChannels()
+    ) { base, currentTab, drives ->
+        base.copy(
+            tab = currentTab,
+            drives = drives,
+            folders = if (currentTab == FilesTab.BROWSE) base.folders else emptyList()
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FilesUiState())
+
+    private fun folderFlow(): Flow<DriveFolder?> =
+        folderId?.let { fileRepository.observeFolder(it) }
+            ?: MutableStateFlow<DriveFolder?>(null)
+
+    private suspend fun breadcrumbsFor(folder: DriveFolder?): List<FolderCrumb> {
+        val trail = ArrayDeque<FolderCrumb>()
+        var current = folder
+        var guard = 0
+        while (current != null && guard++ < MAX_BREADCRUMB_DEPTH) {
+            trail.addFirst(FolderCrumb(current.id, UiText.Plain(current.name)))
+            current = current.parentId?.let { fileRepository.getFolder(it) }
+        }
+        trail.addFirst(FolderCrumb(null, UiText.Resource(Res.string.files_root_name)))
+        return trail.toList()
+    }
+
+    fun toggleSelection(fileId: String) {
+        _allSelected.update { false }
+        selection.update { current ->
+            if (fileId in current) current - fileId else current + fileId
+        }
+    }
+
+    fun toggleFolderSelection(folderId: String) {
+        _allSelected.update { false }
+        folderSelection.update { current ->
+            if (folderId in current) current - folderId else current + folderId
+        }
+    }
+
+    fun clearSelection() {
+        _allSelected.update { false }
+        selection.update { emptySet() }
+        folderSelection.update { emptySet() }
+    }
+
+    fun selectAll() {
+        viewModelScope.launch {
+            val ids = fileRepository.fileIds(querySpec.first())
+            folderSelection.update { uiState.value.folders.map { folder -> folder.id }.toSet() }
+            selection.update { ids.toSet() }
+            _allSelected.update { true }
+        }
+    }
+
+    fun startRangeSelection() {
+        rangeBase = selection.value to folderSelection.value
+    }
+
+    fun extendRangeSelection(fileIds: List<String>, folderIds: List<String>) {
+        val base = rangeBase ?: return
+        _allSelected.update { false }
+        selection.update { base.first + fileIds }
+        folderSelection.update { base.second + folderIds }
+    }
+
+    fun endRangeSelection() {
+        rangeBase = null
+    }
+
+    fun zoomIn() = applyZoom(GridZoomLevel::zoomedIn)
+
+    fun zoomOut() = applyZoom(GridZoomLevel::zoomedOut)
+
+    private fun applyZoom(transform: (GridZoomLevel) -> GridZoomLevel) = updatePrefs { prefs ->
+        val next = transform(GridZoomLevel(prefs.viewMode, prefs.gridSize))
+        prefs.copy(viewMode = next.viewMode, gridSize = next.gridSize)
+    }
+
+    fun setSort(field: FileSortField, direction: SortDirection) =
+        updatePrefs { it.copy(sortField = field, sortDirection = direction) }
+
+    suspend fun createFolderIn(parentId: String?, name: String): Boolean =
+        when (val result = fileRepository.createFolder(parentId, name)) {
+            is AppResult.Success -> true
+            is AppResult.Failure -> {
+                _messages.tryEmit(result.error.toUiText())
+                false
+            }
+        }
+
+    fun createFolder(name: String) {
+        viewModelScope.launch {
+            when (val result = fileRepository.createFolder(folderId, name)) {
+                is AppResult.Success -> Unit
+                is AppResult.Failure -> _messages.tryEmit(result.error.toUiText())
+            }
+        }
+    }
+
+    private val _renameTarget = MutableStateFlow<RenameTarget?>(null)
+    val renameTarget: StateFlow<RenameTarget?> = _renameTarget.asStateFlow()
+
+    fun requestRenameSelected() {
+        val fileId = selection.value.singleOrNull()
+        val folderId = folderSelection.value.singleOrNull()
+        viewModelScope.launch {
+            _renameTarget.value = when {
+                fileId != null && folderId == null ->
+                    fileRepository.getFile(fileId)?.let {
+                        RenameTarget(it.id, it.name, isFolder = false)
+                    }
+
+                folderId != null && fileId == null ->
+                    fileRepository.getFolder(folderId)?.let {
+                        RenameTarget(it.id, it.name, isFolder = true)
+                    }
+
+                else -> null
+            }
+        }
+    }
+
+    fun dismissRename() {
+        _renameTarget.value = null
+    }
+
+    fun confirmRename(newName: String) {
+        val target = _renameTarget.value ?: return
+        _renameTarget.value = null
+        clearSelection()
+        if (target.isFolder) renameFolder(target.id, newName) else renameFile(target.id, newName)
+    }
+
+    fun renameFile(fileId: String, newName: String) {
+        viewModelScope.launch {
+            fileRepository.renameFile(fileId, newName).let {
+                if (it is AppResult.Failure) _messages.tryEmit(it.error.toUiText())
+            }
+        }
+    }
+
+    fun renameFolder(id: String, newName: String) {
+        viewModelScope.launch {
+            fileRepository.renameFolder(id, newName).let {
+                if (it is AppResult.Failure) _messages.tryEmit(it.error.toUiText())
+            }
+        }
+    }
+
+    data class UndoOffer(val fileIds: List<String>, val folderIds: List<String>, val total: Int)
+
+    private val _undoOffer = kotlinx.coroutines.flow.MutableStateFlow<UndoOffer?>(null)
+    val undoOffer: StateFlow<UndoOffer?> = _undoOffer
+
+    fun dismissUndo() {
+        _undoOffer.value = null
+    }
+
+    /** Puts back what the last delete moved to the trash. Nothing is lost until the trash is emptied. */
+    fun undoTrash() {
+        val offer = _undoOffer.value ?: return
+        _undoOffer.value = null
+        viewModelScope.launch {
+            if (offer.fileIds.isNotEmpty()) trashRepository.restoreFiles(offer.fileIds)
+            offer.folderIds.forEach { trashRepository.restoreFolder(it) }
+        }
+    }
+
+    fun trashSelected() {
+        val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
+        val total = ids.size + folderIds.size
+        clearSelection()
+        _working.value = UiText.Resource(Res.string.files_moving_to_trash, total)
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                if (ids.isNotEmpty()) trashRepository.moveFilesToTrash(ids)
+                folderIds.forEach { trashRepository.moveFolderToTrash(it) }
+            }
+            _working.value = null
+            _undoOffer.value = UndoOffer(ids, folderIds, total)
+        }
+    }
+
+    fun uploadSelected() {
+        val ids = selection.value.toList()
+        clearSelection()
+        viewModelScope.launch {
+            var failures = 0
+            ids.forEach { id ->
+                if (transferRepository.enqueueUpload(id) is AppResult.Failure) failures++
+            }
+            _messages.tryEmit(
+                if (failures == 0) {
+                    UiText.Resource(Res.string.files_queued_for_upload, ids.size)
+                } else {
+                    UiText.Resource(Res.string.files_queued_partial, ids.size - failures, failures)
+                }
+            )
+        }
+    }
+
+    fun downloadSelected() {
+        val fileIds = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
+        clearSelection()
+        viewModelScope.launch {
+            val ids = (
+                    fileIds + folderIds.flatMap { fileRepository.fileIdsInTree(it) }
+                    ).distinct()
+            if (ids.isEmpty()) {
+                _messages.tryEmit(UiText.Resource(Res.string.message_nothing_to_download))
+                return@launch
+            }
+            var failures = 0
+            ids.forEach { id ->
+                if (transferRepository.enqueueDownload(id) is AppResult.Failure) failures++
+            }
+            _messages.tryEmit(
+                if (failures == 0) {
+                    UiText.Resource(Res.string.files_queued_for_download, ids.size)
+                } else {
+                    UiText.Resource(Res.string.files_queued_partial, ids.size - failures, failures)
+                }
+            )
+        }
+    }
+
+    fun setSelectedAvailableOffline(available: Boolean) {
+        val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
+        clearSelection()
+        viewModelScope.launch {
+            val queued = makeAvailableOffline(ids, folderIds, available)
+            if (queued > 0) {
+                _messages.tryEmit(UiText.Resource(Res.string.files_queued_for_download, queued))
+            }
+        }
+    }
+
+    fun favoriteSelected(favorite: Boolean) {
+        val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
+        clearSelection()
+        viewModelScope.launch {
+            if (ids.isNotEmpty()) fileRepository.setFilesFavorite(ids, favorite)
+            folderIds.forEach { fileRepository.setFolderFavorite(it, favorite) }
+        }
+    }
+
+    fun hideSelected(hidden: Boolean) {
+        val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
+        clearSelection()
+        viewModelScope.launch {
+            if (ids.isNotEmpty()) fileRepository.setFilesHidden(ids, hidden)
+            folderIds.forEach { fileRepository.setFolderHidden(it, hidden) }
+        }
+    }
+
+    fun archiveSelected(archived: Boolean) {
+        val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
+        clearSelection()
+        viewModelScope.launch {
+            if (ids.isNotEmpty()) fileRepository.setFilesArchived(ids, archived)
+            folderIds.forEach { fileRepository.setFolderArchived(it, archived) }
+        }
+    }
+
+    fun moveSelected(targetFolderId: String?) {
+        val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
+        clearSelection()
+        viewModelScope.launch {
+            var failures = 0
+            if (ids.isNotEmpty()) {
+                val result = fileRepository.moveFiles(ids, targetFolderId)
+                if (result is AppResult.Failure) {
+                    _messages.tryEmit(result.error.toUiText())
+                    return@launch
+                }
+            }
+            folderIds.forEach { id ->
+                val result = fileRepository.moveFolder(id, targetFolderId)
+                if (result is AppResult.Failure) {
+                    failures++
+                    _messages.tryEmit(result.error.toUiText())
+                }
+            }
+            if (failures == 0) _messages.tryEmit(
+                UiText.Resource(
+                    Res.string.message_moved_count,
+                    ids.size + folderIds.size
+                )
+            )
+        }
+    }
+
+    fun copySelected(targetFolderId: String?) {
+        val ids = selection.value.toList()
+        clearSelection()
+        _copying.update { true }
+        viewModelScope.launch {
+            when (val result = fileRepository.copyFiles(ids, targetFolderId)) {
+                is AppResult.Success -> _messages.tryEmit(
+                    if (result.value == ids.size) {
+                        UiText.Resource(Res.string.files_copied_all, result.value)
+                    } else {
+                        UiText.Resource(Res.string.files_copied_partial, result.value, ids.size)
+                    }
+                )
+
+                is AppResult.Failure -> _messages.tryEmit(result.error.toUiText())
+            }
+            _copying.update { false }
+        }
+    }
+
+    suspend fun childFolders(parentId: String?): List<DriveFolder> =
+        fileRepository.observeFolders(parentId, showHidden = true, showArchived = true).first()
+
+    suspend fun folderName(id: String): String =
+        fileRepository.getFolder(id)?.name.orEmpty()
+
+    suspend fun parentFolderId(id: String): String? = fileRepository.getFolder(id)?.parentId
+
+    private val _deleteConsentRequests =
+        MutableSharedFlow<DeleteConsentRequest>(extraBufferCapacity = 1)
+    val deleteConsentRequests = _deleteConsentRequests.asSharedFlow()
+    private var pendingLocalCopyIds: List<String> = emptyList()
+
+    fun deleteLocalCopies() {
+        val ids = selection.value.toList()
+        clearSelection()
+        removeLocalCopies(ids)
+    }
+
+    fun retryLocalCopyRemoval() {
+        removeLocalCopies(pendingLocalCopyIds)
+    }
+
+    private fun removeLocalCopies(ids: List<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            when (val result = fileRepository.deleteLocalCopy(ids)) {
+                is AppResult.Success -> {
+                    val consent = result.value.consentRequest
+                    if (consent != null) {
+                        pendingLocalCopyIds = ids
+                        _deleteConsentRequests.tryEmit(consent)
+                    } else {
+                        pendingLocalCopyIds = emptyList()
+                        val kept = result.value.keptOffline
+                        _messages.tryEmit(
+                            if (kept > 0 && result.value.deletedCount == 0) {
+                                UiText.Resource(Res.string.files_kept_offline_copies, kept)
+                            } else {
+                                UiText.Resource(
+                                    Res.string.files_removed_local_copies,
+                                    result.value.deletedCount
+                                )
+                            }
+                        )
+                    }
+                }
+
+                is AppResult.Failure -> _messages.tryEmit(result.error.toUiText())
+            }
+        }
+    }
+
+    val sharedUris: StateFlow<List<String>> = pendingShare.uris
+
+    fun acceptShare(uris: List<String>, target: String?) {
+        pendingShare.clear()
+        importAndUpload(uris, target)
+    }
+
+    fun dismissShare() = pendingShare.clear()
+
+    /**
+     * Imports run outside viewModelScope: preparing a large pick can take
+     * minutes, and leaving this screen must not silently cancel it.
+     */
+    private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun importAndUpload(uris: List<String>, target: String? = folderId) {
+        if (uris.isEmpty()) return
+        importScope.launch {
+            _messages.tryEmit(UiText.Resource(Res.string.files_import_preparing))
+            var imported = 0
+            var restored = 0
+            var duplicates = 0
+            var copied = 0
+            var failed = 0
+            val sources = uris.flatMap { uri -> fileImporter.expand(uri) }
+            for (source in sources) {
+                val destination = fileRepository.resolveImportFolder(
+                    source.relativeFolder,
+                    target
+                )
+                val file = fileImporter.import(source.reference)
+                if (file == null) {
+                    failed++
+                    continue
+                }
+                val existing = fileRepository.findDuplicate(file.path)
+                if (existing != null) {
+                    if (existing.folderId == destination) {
+                        duplicates++
+                    } else if (fileRepository.copyFiles(listOf(existing.id), destination)
+                                is AppResult.Success
+                    ) {
+                        copied++
+                    } else {
+                        failed++
+                    }
+                    fileImporter.discard(file)
+                    continue
+                }
+                when (
+                    val result = fileRepository.importLocalFile(file.path, destination, file.name)
+                ) {
+                    is AppResult.Success -> {
+                        val drive = result.value
+                        if (drive.hasRemoteCopy) {
+                            restored++
+                        } else {
+                            transferRepository.enqueueUpload(drive.id)
+                            imported++
+                        }
+                    }
+
+                    is AppResult.Failure -> {
+                        fileImporter.discard(file)
+                        failed++
+                    }
+                }
+            }
+            _messages.tryEmit(importSummary(imported, restored, duplicates, copied, failed))
+        }
+    }
+
+    private fun importSummary(
+        imported: Int,
+        restored: Int,
+        duplicates: Int,
+        copied: Int,
+        failed: Int
+    ): UiText = when {
+        imported == 0 && restored == 0 && duplicates == 0 && copied > 0 ->
+            UiText.Resource(Res.string.files_import_copied, copied)
+
+        imported > 0 && copied > 0 ->
+            UiText.Resource(Res.string.files_import_uploading_copied, imported, copied)
+
+        imported == 0 && restored == 0 && duplicates > 0 ->
+            UiText.Resource(Res.string.files_import_duplicates, duplicates)
+
+        imported > 0 && duplicates > 0 ->
+            UiText.Resource(Res.string.files_import_uploading_duplicates, imported, duplicates)
+
+        imported == 0 && restored > 0 && failed == 0 ->
+            UiText.Resource(Res.string.files_import_restored, restored)
+
+        imported == 0 && restored == 0 ->
+            UiText.Resource(Res.string.files_import_failed)
+
+        restored > 0 && failed == 0 ->
+            UiText.Resource(Res.string.files_import_uploading_restored, imported, restored)
+
+        failed == 0 -> UiText.Resource(Res.string.files_import_uploading, imported)
+        else -> UiText.Resource(Res.string.files_import_uploading_failed, imported, failed)
+    }
+
+    fun editSelectedNote() {
+        val fileId = selection.value.singleOrNull() ?: return
+        clearSelection()
+        viewModelScope.launch {
+            val file = fileRepository.getFiles(listOf(fileId)).firstOrNull() ?: return@launch
+            if (!MimeTypes.isText(file.mimeType)) {
+                _messages.tryEmit(UiText.Resource(Res.string.note_not_editable))
+                return@launch
+            }
+            _editRequests.tryEmit(
+                EditNoteRequest(fileId = file.id, title = file.name.substringBeforeLast('.'))
+            )
+        }
+    }
+
+    fun shareSelected() {
+        val ids = selection.value.toList()
+        if (ids.isEmpty()) return
+        clearSelection()
+        viewModelScope.launch {
+            val files = fileRepository.getFiles(ids)
+            val paths = files.mapNotNull { it.localPath }
+            if (paths.isEmpty()) {
+                _messages.tryEmit(UiText.Resource(Res.string.files_share_needs_local))
+                return@launch
+            }
+            val mimeType = files.map { it.mimeType }.distinct().singleOrNull() ?: "*/*"
+            _shareRequests.tryEmit(ShareRequest(paths, mimeType))
+            if (paths.size < files.size) {
+                _messages.tryEmit(UiText.Resource(Res.string.files_share_needs_local))
+            }
+        }
+    }
+
+    fun showInfo(file: DriveFile) = _infoTarget.update { file }
+
+    fun showInfoForSelection() {
+        val fileId = selection.value.singleOrNull()
+        val folderId = folderSelection.value.singleOrNull()
+        viewModelScope.launch {
+            when {
+                fileId != null ->
+                    fileRepository.getFiles(listOf(fileId)).firstOrNull()?.let { file ->
+                        _infoTarget.update { file }
+                    }
+
+                folderId != null ->
+                    uiState.value.folders.firstOrNull { it.id == folderId }?.let { folder ->
+                        _folderInfoTarget.update { folder }
+                    }
+            }
+            clearSelection()
+        }
+    }
+
+    fun dismissFolderInfo() = _folderInfoTarget.update { null }
+
+    fun dismissInfo() = _infoTarget.update { null }
+
+    private fun updatePrefs(transform: (UserPreferences) -> UserPreferences) {
+        viewModelScope.launch { settingsRepository.update(transform) }
+    }
+
+    companion object {
+        private const val MIN_REFRESH_VISIBLE_MS = 700L
+        private const val MAX_BREADCRUMB_DEPTH = 64
+    }
+}

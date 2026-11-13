@@ -1,0 +1,108 @@
+package com.safiislam.nexvault.core.files
+
+import android.content.ContentResolver
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.core.net.toUri
+import com.safiislam.nexvault.core.common.SafeLog
+import java.io.File
+
+/**
+ * Files the app can already read are used in place so nothing is duplicated; anything else is
+ * copied, since a content URI grant may not survive a reboot.
+ */
+class AndroidFileImporter(
+    private val context: Context
+) : FileImporter {
+
+    override fun import(reference: String): ImportedFile? {
+        val direct = runCatching { File(reference) }.getOrNull()?.takeIf { it.isFile }
+        if (direct != null) {
+            return ImportedFile(direct.absolutePath, direct.name, direct.length())
+        }
+        return import(reference.toUri())
+    }
+
+    private fun import(uri: Uri): ImportedFile? {
+        if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val direct = uri.path?.let(::File)?.takeIf { it.isFile }
+            if (direct != null) {
+                return ImportedFile(direct.absolutePath, direct.name, direct.length())
+            }
+        }
+        readablePath(uri)?.let { source ->
+            return ImportedFile(source.absolutePath, source.name, source.length())
+        }
+
+        val metadata = queryMetadata(uri) ?: run {
+            SafeLog.w(TAG, "Import failed: the provider returned no metadata")
+            return null
+        }
+        val displayName = FileNameUtils.sanitize(metadata.first)
+        val targetDir = File(context.filesDir, IMPORT_DIR).apply { mkdirs() }
+
+        val staged = File(targetDir, displayName)
+        if (staged.isFile && staged.length() == metadata.second && metadata.second > 0) {
+            return ImportedFile(staged.absolutePath, displayName, staged.length())
+        }
+
+        val existingNames = targetDir.list()?.toSet().orEmpty()
+        val stagingName = FileNameUtils.uniqueName(displayName) { it in existingNames }
+        val target = File(targetDir, stagingName)
+
+        return runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                target.outputStream().buffered().use { output -> input.copyTo(output) }
+            } ?: run {
+                SafeLog.w(TAG, "Import failed: the provider refused to open the document")
+                return null
+            }
+            ImportedFile(target.absolutePath, displayName, target.length())
+        }.getOrElse {
+            SafeLog.w(TAG, "Import failed", it)
+            target.delete()
+            null
+        }
+    }
+
+    override fun discard(imported: ImportedFile) {
+        if (isStaged(imported.path)) File(imported.path).delete()
+    }
+
+    override fun expand(reference: String): List<ImportSource> =
+        expandDirectory(reference) ?: listOf(ImportSource(reference, ""))
+
+    override fun isStaged(path: String): Boolean =
+        File(path).parentFile == File(context.filesDir, IMPORT_DIR)
+
+    override fun sweepOrphans(referencedPaths: Set<String>) {
+        val staged = File(context.filesDir, IMPORT_DIR).listFiles() ?: return
+        staged.filter { it.isFile && it.absolutePath !in referencedPaths }
+            .forEach { orphan ->
+                SafeLog.d(TAG, "Dropping an orphaned import of ${orphan.length()} bytes")
+                orphan.delete()
+            }
+    }
+
+    private fun readablePath(uri: Uri): File? {
+        val candidate = DocumentTreePaths.documentToFilePath(context, uri) ?: return null
+        val file = File(candidate)
+        return file.takeIf { it.isFile && it.canRead() && it.length() > 0 }
+    }
+
+    private fun queryMetadata(uri: Uri): Pair<String, Long>? =
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+            val name = if (nameIndex >= 0) cursor.getString(nameIndex) else null
+            val size = if (sizeIndex >= 0) cursor.getLong(sizeIndex) else 0L
+            (name ?: uri.lastPathSegment ?: "file") to size
+        }
+
+    companion object {
+        private const val TAG = "FileImporter"
+        private const val IMPORT_DIR = "imports"
+    }
+}

@@ -1,0 +1,466 @@
+import java.net.URI
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.multiplatform)
+    id("org.jetbrains.compose.hot-reload")
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+val generateBuildInfo = tasks.register("generateBuildInfo") {
+    description = "Generates BuildInfo.kt with the version from the version catalog"
+    group = "build"
+    val version = libs.versions.appVersion.get()
+    val firebaseKey = providers.gradleProperty("FIREBASE_API_KEY").orElse(providers.environmentVariable("FIREBASE_API_KEY")).orElse("").get()
+    val firebaseProject = providers.gradleProperty("FIREBASE_PROJECT_ID").orElse(providers.environmentVariable("FIREBASE_PROJECT_ID")).orElse("").get()
+    val outDir = layout.buildDirectory.dir("generated/buildinfo")
+    inputs.property("version", version)
+    inputs.property("firebaseKey", firebaseKey)
+    inputs.property("firebaseProject", firebaseProject)
+    outputs.dir(outDir)
+    doLast {
+        val file = outDir.get().file("com/safiislam/nexvault/desktop/BuildInfo.kt").asFile
+        file.parentFile.mkdirs()
+        val content = listOf(
+            "package com.safiislam.nexvault.desktop",
+            "",
+            "object BuildInfo {",
+            "    const val VERSION = \"$version\"",
+            "    const val FIREBASE_API_KEY = \"$firebaseKey\"",
+            "    const val FIREBASE_PROJECT_ID = \"$firebaseProject\"",
+            "}",
+            ""
+        )
+        file.writeText(content.joinToString(System.lineSeparator()))
+    }
+}
+
+kotlin.sourceSets.named("main") {
+    kotlin.srcDir(generateBuildInfo)
+}
+
+compose.resources {
+    packageOfResClass = "com.safiislam.nexvault.desktop.resources"
+}
+
+dependencies {
+    implementation(project(":shared"))
+    implementation(project(":ui"))
+    implementation(compose.desktop.currentOs)
+    implementation(libs.cmp.components.resources)
+    implementation(libs.cmp.material3)
+    implementation(libs.kotlinx.coroutines.swing)
+    implementation(libs.coil.compose)
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.core)
+    implementation(libs.koin.compose)
+    implementation(libs.jna.platform)
+    implementation(libs.vlcj)
+    testImplementation(libs.junit)
+    testImplementation(libs.koin.test)
+}
+
+// The bundled VLC is a Windows-only payload (win64 archive, libvlc.dll). On any
+// other host the tasks must not exist, so Linux builds never download the
+// Windows archive or bundle DLLs into a non-Windows artifact.
+if (System.getProperty("os.name").lowercase().contains("win")) {
+    val vlcVersion = "3.0.21"
+    val vlcZip = layout.buildDirectory.file("vlc/vlc-$vlcVersion-win64.zip")
+
+    val downloadVlc = tasks.register("downloadVlc") {
+        description = "Downloads the VLC natives archive for bundling"
+        group = "build"
+        val zipFile = vlcZip
+        val archiveName = "vlc-$vlcVersion-win64.zip"
+        val attempts = 3
+        val connectTimeoutMs = 30_000
+        val readTimeoutMs = 120_000
+        val retryBackoffMs = 5_000L
+        val mirrors = listOf(
+            "https://download.videolan.org/pub/videolan/vlc/$vlcVersion/win64/$archiveName",
+            "https://get.videolan.org/vlc/$vlcVersion/win64/$archiveName"
+        )
+        outputs.file(zipFile)
+        doLast {
+            val target = zipFile.get().asFile
+            if (target.length() > 0) return@doLast
+            target.parentFile.mkdirs()
+
+            var lastFailure: Exception? = null
+            repeat(attempts) { attempt ->
+                for (mirror in mirrors) {
+                    try {
+                        val connection = URI(mirror).toURL().openConnection().apply {
+                            connectTimeout = connectTimeoutMs
+                            readTimeout = readTimeoutMs
+                        }
+                        connection.getInputStream().use { input ->
+                            target.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        if (target.length() > 0) return@doLast
+                    } catch (e: Exception) {
+                        lastFailure = e
+                        logger.warn("VLC download from $mirror failed: ${e.message}")
+                        target.delete()
+                    }
+                }
+                if (attempt < attempts - 1) {
+                    Thread.sleep((attempt + 1) * retryBackoffMs)
+                }
+            }
+            throw GradleException("Could not download $archiveName from any mirror", lastFailure)
+        }
+    }
+
+    val prepareVlcNatives = tasks.register<Copy>("prepareVlcNatives") {
+        description = "Unpacks the VLC libraries the inline player loads"
+        group = "build"
+        dependsOn(downloadVlc)
+        from(zipTree(vlcZip)) {
+            include("vlc-$vlcVersion/libvlc.dll")
+            include("vlc-$vlcVersion/libvlccore.dll")
+            include("vlc-$vlcVersion/plugins/**")
+            exclude("vlc-$vlcVersion/plugins/gui/**")
+            exclude("vlc-$vlcVersion/plugins/lua/**")
+            eachFile { relativePath = RelativePath(true, *relativePath.segments.drop(1).toTypedArray()) }
+            includeEmptyDirs = false
+        }
+        into(layout.buildDirectory.dir("appResources/windows-x64/vlc"))
+    }
+
+    tasks.matching {
+        it.name in setOf(
+            "run",
+            "hotRun",
+            "packageMsi",
+            "packageDeb",
+            "packageDmg",
+            "createDistributable",
+            "packageDistributionForCurrentOS"
+        ) || it.name.startsWith("prepareAppResources")
+    }.configureEach { dependsOn(prepareVlcNatives) }
+}
+
+if (System.getProperty("os.name").lowercase().contains("mac")) {
+    val vlcVersion = "3.0.21"
+    val vlcDmg = layout.buildDirectory.file("vlc/vlc-$vlcVersion-arm64.dmg")
+
+    val downloadVlcMac = tasks.register("downloadVlcMac") {
+        description = "Downloads the VLC disk image for bundling"
+        group = "build"
+        val target = vlcDmg
+        val archiveName = "vlc-$vlcVersion-arm64.dmg"
+        val attempts = 3
+        val connectTimeoutMs = 30_000
+        val readTimeoutMs = 120_000
+        val retryBackoffMs = 5_000L
+        val mirrors = listOf(
+            "https://download.videolan.org/pub/videolan/vlc/$vlcVersion/macosx/$archiveName",
+            "https://get.videolan.org/vlc/$vlcVersion/macosx/$archiveName"
+        )
+        outputs.file(target)
+        doLast {
+            val file = target.get().asFile
+            if (file.length() > 0) return@doLast
+            file.parentFile.mkdirs()
+
+            var lastFailure: Exception? = null
+            repeat(attempts) { attempt ->
+                for (mirror in mirrors) {
+                    try {
+                        val connection = URI(mirror).toURL().openConnection().apply {
+                            connectTimeout = connectTimeoutMs
+                            readTimeout = readTimeoutMs
+                        }
+                        connection.getInputStream().use { input ->
+                            file.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        if (file.length() > 0) return@doLast
+                    } catch (e: Exception) {
+                        lastFailure = e
+                        logger.warn("VLC download from $mirror failed: ${e.message}")
+                        file.delete()
+                    }
+                }
+                if (attempt < attempts - 1) {
+                    Thread.sleep((attempt + 1) * retryBackoffMs)
+                }
+            }
+            throw GradleException("Could not download $archiveName from any mirror", lastFailure)
+        }
+    }
+
+    val prepareVlcNativesMac = tasks.register("prepareVlcNativesMac") {
+        description = "Unpacks the VLC libraries the inline player loads"
+        group = "build"
+        dependsOn(downloadVlcMac)
+        notCompatibleWithConfigurationCache("runs hdiutil from a doLast closure")
+        val dmg = vlcDmg
+        val outDir = layout.buildDirectory.dir("appResources/macos-arm64/vlc")
+        val mountDir = layout.buildDirectory.dir("vlc/mount")
+        inputs.file(dmg)
+        outputs.dir(outDir)
+        doLast {
+            val out = outDir.get().asFile
+            val mount = mountDir.get().asFile
+            out.deleteRecursively()
+            out.mkdirs()
+            mount.deleteRecursively()
+            mount.mkdirs()
+
+            providers.exec {
+                commandLine(
+                    "hdiutil", "attach", dmg.get().asFile.absolutePath,
+                    "-nobrowse", "-readonly", "-mountpoint", mount.absolutePath
+                )
+            }.result.get()
+            try {
+                val payload = File(mount, "VLC.app/Contents/MacOS")
+                check(File(payload, "lib/libvlc.dylib").exists()) {
+                    "libvlc.dylib missing from $payload"
+                }
+                val libraries = File(out, "lib").apply { mkdirs() }
+                File(payload, "lib").listFiles()
+                    .orEmpty()
+                    .filter { it.isFile && it.name.startsWith("libvlc") && it.name.endsWith(".dylib") }
+                    .forEach { it.copyTo(File(libraries, it.name), overwrite = true) }
+
+                val pluginRoot = File(payload, "plugins")
+                val skipped = listOf("libqt", "liblua", "libskins2")
+                pluginRoot.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { source ->
+                        val relative = source.relativeTo(pluginRoot).invariantSeparatorsPath
+                        if (relative.startsWith("gui/") || relative.startsWith("lua/")) return@forEach
+                        if (skipped.any { source.name.startsWith(it) }) return@forEach
+                        val destination = File(out, "plugins/$relative")
+                        destination.parentFile.mkdirs()
+                        source.copyTo(destination, overwrite = true)
+                    }
+            } finally {
+                providers.exec {
+                    commandLine("hdiutil", "detach", mount.absolutePath, "-quiet")
+                }.result.get()
+            }
+        }
+    }
+
+    tasks.matching {
+        it.name in setOf(
+            "run",
+            "hotRun",
+            "packageDmg",
+            "createDistributable",
+            "packageDistributionForCurrentOS"
+        ) || it.name.startsWith("prepareAppResources")
+    }.configureEach { dependsOn(prepareVlcNativesMac) }
+}
+
+val debVersion = libs.versions.appVersion.get()
+    .split(".")
+    .let { parts -> (parts + List(3) { "0" }).take(3) }
+    .joinToString(".")
+
+// The .deb publishes this in its control metadata, so it must be a real address.
+// Override per build with -PdebMaintainer=email@example.com. jpackage renders it
+// as "<vendor> <value>", so pass a bare email here.
+val debMaintainerValue = providers.gradleProperty("debMaintainer")
+    .orElse("mhofficial2020@gmail.com")
+
+compose.desktop {
+    application {
+        mainClass = "com.safiislam.nexvault.desktop.MainKt"
+        providers.gradleProperty("desktopJavaHome").orNull?.let { javaHome = it }
+
+        nativeDistributions {
+            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Dmg)
+            appResourcesRootDir.set(layout.buildDirectory.dir("appResources"))
+            packageName = "CloudNest"
+            packageVersion = libs.versions.appVersion.get()
+                .split(".")
+                .let { parts -> (parts + List(3) { "0" }).take(3) }
+                .joinToString(".")
+            description = "Private cloud storage on your own Telegram channel"
+            modules(
+                "java.instrument",
+                "jdk.accessibility",
+                "java.naming",
+                "java.sql",
+                "jdk.crypto.ec",
+                "jdk.httpserver",
+                "jdk.unsupported"
+            )
+            vendor = "Md. Safi Islam"
+            licenseFile.set(rootProject.file("LICENSE"))
+
+            windows {
+                iconFile.set(project.file("icons/CloudNest.ico"))
+                perUserInstall = true
+                menuGroup = "CloudNest"
+                shortcut = true
+                dirChooser = true
+                upgradeUuid = "b7e35f74-33a4-43d9-98b1-84babb95f8a7"
+            }
+
+            linux {
+                iconFile.set(project.file("icons/CloudNest.png"))
+                shortcut = true
+                packageName = "cloudnest"
+                appCategory = "Network"
+                menuGroup = "Network"
+                debMaintainer = debMaintainerValue.get()
+            }
+
+            macOS {
+                iconFile.set(project.file("icons/CloudNest.icns"))
+                bundleID = "com.safiislam.nexvault"
+            }
+        }
+    }
+}
+
+val DEB_DEPENDS = listOf(
+    "libssl3t64",
+    "zlib1g",
+    "libstdc++6",
+    "libgcc-s1",
+    "libc6",
+    "libvlc5",
+    "vlc-plugin-base",
+    "vlc-plugin-video-output"
+).joinToString(",")
+
+// Compose's packageDeb cannot declare Debian dependencies, so a dedicated task
+// repackages the app image produced by createDistributable (which already
+// bundles the JVM runtime via jlink) with jpackage and the system libraries the
+// TDLight native needs at runtime. jpackage's generated postinst calls
+// xdg-desktop-menu under set -e and fails on minimal systems, so the control
+// scripts are replaced with versions that degrade to a direct desktop-file
+// install when no menu directory exists.
+val packageDebUser = tasks.register("packageDebUser") {
+    description = "Builds an installable .deb with declared system dependencies and a robust postinst via jpackage"
+    group = "distribution"
+    dependsOn("createDistributable")
+    notCompatibleWithConfigurationCache("runs jpackage and dpkg-deb from a doLast closure")
+    val appImage = layout.buildDirectory.dir("compose/binaries/main/app/CloudNest")
+    val destDir = layout.buildDirectory.dir("deb")
+    val workDir = layout.buildDirectory.dir("debwork")
+    val javaHome = providers.gradleProperty("desktopJavaHome").orNull
+    val jpackage = javaHome?.let { File(it, "bin/jpackage") }
+        ?: File(System.getProperty("java.home"), "bin/jpackage")
+    val debFile = destDir.map { it.file("cloudnest_${debVersion}_amd64.deb") }
+    inputs.dir(appImage)
+    outputs.file(debFile)
+    doLast {
+        providers.exec {
+            commandLine(
+                jpackage.absolutePath,
+                "--type", "deb",
+                "--app-image", appImage.get().asFile.absolutePath,
+                "--name", "CloudNest",
+                "--app-version", debVersion,
+                "--vendor", "Md. Safi Islam",
+                "--linux-package-name", "cloudnest",
+                "--linux-package-deps", DEB_DEPENDS,
+                "--linux-shortcut",
+                "--linux-app-category", "Network",
+                "--linux-menu-group", "Network",
+                "--linux-deb-maintainer", debMaintainerValue.get(),
+                "--dest", destDir.get().asFile.absolutePath
+            )
+        }.result.get()
+
+        val work = workDir.get().asFile
+        work.deleteRecursively()
+        providers.exec {
+            commandLine("dpkg-deb", "-R", debFile.get().asFile.absolutePath, work.absolutePath)
+        }.result.get()
+        File(work, "DEBIAN/postinst").apply {
+            writeText(ROBUST_POSTINST)
+            setExecutable(true)
+        }
+        File(work, "DEBIAN/postrm").apply {
+            writeText(ROBUST_POSTRM)
+            setExecutable(true)
+        }
+        providers.exec {
+            commandLine("dpkg-deb", "--build", work.absolutePath, debFile.get().asFile.absolutePath)
+        }.result.get()
+        work.deleteRecursively()
+    }
+}
+
+val ROBUST_POSTINST = """#!/bin/sh
+# postinst script for cloudnest
+set -e
+case "${'$'}1" in
+    configure)
+        desktop=/opt/cloudnest/lib/cloudnest-CloudNest.desktop
+        if [ ! -f "${'$'}desktop" ]; then exit 0; fi
+        if xdg-desktop-menu install "${'$'}desktop" 2>/dev/null; then
+            :
+        else
+            mkdir -p /usr/share/applications
+            cp "${'$'}desktop" /usr/share/applications/cloudnest.desktop
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument \`${'$'}1'" >&2
+        exit 1
+        ;;
+esac
+exit 0
+"""
+
+val ROBUST_POSTRM = """#!/bin/sh
+# postrm script for cloudnest
+set -e
+case "${'$'}1" in
+    remove|purge)
+        rm -f /usr/share/applications/cloudnest.desktop
+        xdg-desktop-menu uninstall /opt/cloudnest/lib/cloudnest-CloudNest.desktop 2>/dev/null || true
+        ;;
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+    *)
+        echo "postrm called with unknown argument \`${'$'}1'" >&2
+        exit 1
+        ;;
+esac
+exit 0
+"""
+
+val appImageTool = providers.gradleProperty("appimagetool").orElse("appimagetool")
+val linuxDeployTool = providers.gradleProperty("linuxdeploy").orElse("linuxdeploy")
+
+val packageAppImage = tasks.register("packageAppImage") {
+    description = "Builds a portable x86_64 AppImage with libVLC bundled, using linuxdeploy and appimagetool"
+    group = "distribution"
+    dependsOn("createDistributable")
+    val appImage = layout.buildDirectory.dir("compose/binaries/main/app/CloudNest").map { it.asFile }
+    val packaging = layout.projectDirectory.dir("packaging/linux")
+    val script = packaging.file("build-appimage.sh").asFile
+    val icon = layout.projectDirectory.file("icons/CloudNest.png").asFile
+    val output = layout.buildDirectory.file("appimage/CloudNest-${debVersion}-x86_64.AppImage").map { it.asFile }
+    val tools = mapOf("APPIMAGETOOL" to appImageTool, "LINUXDEPLOY" to linuxDeployTool)
+    inputs.dir(appImage)
+    inputs.dir(packaging)
+    inputs.file(icon)
+    outputs.file(output)
+    doLast {
+        val process = ProcessBuilder(
+            "sh", script.absolutePath, appImage.get().absolutePath, icon.absolutePath,
+            output.get().absolutePath
+        ).inheritIO()
+        tools.forEach { (name, path) -> process.environment()[name] = path.get() }
+        val exitCode = process.start().waitFor()
+        check(exitCode == 0) { "build-appimage.sh failed with exit code $exitCode" }
+    }
+}

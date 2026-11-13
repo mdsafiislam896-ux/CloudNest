@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=CloudNest
+Comment=Cloud storage backed by your Telegram account
+Exec=CloudNest
+Icon=cloudnest
+Categories=Network;FileTransfer;
+Terminal=false

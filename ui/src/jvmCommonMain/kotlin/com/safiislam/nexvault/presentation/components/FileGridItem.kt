@@ -1,0 +1,137 @@
+package com.safiislam.nexvault.presentation.components
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.OfflinePin
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.safiislam.nexvault.domain.model.BackupState
+import com.safiislam.nexvault.domain.model.DriveFile
+import com.safiislam.nexvault.presentation.common.Formatters
+import com.safiislam.nexvault.resources.Res
+import com.safiislam.nexvault.resources.common_content_description_available_offline
+import com.safiislam.nexvault.resources.common_content_description_favorite
+import com.safiislam.nexvault.resources.common_content_description_selected
+import com.safiislam.nexvault.resources.common_select
+import org.jetbrains.compose.resources.stringResource
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FileGridItem(
+    file: DriveFile,
+    selected: Boolean,
+    showFavorite: Boolean = true,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    Column(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.large)
+            .background(
+                if (selected) MaterialTheme.colorScheme.secondaryContainer
+                else MaterialTheme.colorScheme.surfaceContainerLow
+            )
+            .combinedClickable(
+                onLongClickLabel = stringResource(Res.string.common_select),
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    ) {
+        Box {
+            FileThumbnail(
+                file = file,
+                contentDescription = if (compact) file.name else null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+            )
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = stringResource(Res.string.common_content_description_selected),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(22.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (file.backupState != BackupState.BACKED_UP) {
+                BackupStateBadge(
+                    file = file,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .alpha(BADGE_ALPHA)
+                )
+            }
+        }
+        if (!compact) {
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = file.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (file.isFavorite && showFavorite) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = stringResource(
+                                Res.string.common_content_description_favorite
+                            ),
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    if (file.isAvailableOffline) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Filled.OfflinePin,
+                            contentDescription = stringResource(
+                                Res.string.common_content_description_available_offline
+                            ),
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                }
+                Text(
+                    text = Formatters.bytes(file.sizeBytes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+private const val BADGE_ALPHA = 0.6f

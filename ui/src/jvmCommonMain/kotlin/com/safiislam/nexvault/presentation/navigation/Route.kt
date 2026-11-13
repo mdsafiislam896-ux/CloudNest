@@ -1,0 +1,97 @@
+package com.safiislam.nexvault.presentation.navigation
+
+import kotlinx.serialization.Serializable
+
+sealed interface Route {
+
+    @Serializable
+    data object Onboarding : Route
+
+    @Serializable
+    data object Home : Route
+
+    @Serializable
+    data class Files(
+        val folderId: String? = null,
+        val focusFileId: String? = null
+    ) : Route
+
+    @Serializable
+    data object Gallery : Route
+
+    @Serializable
+    data class GalleryAlbum(val folderId: String?, val title: String) : Route
+
+    @Serializable
+    /**
+     * The fields besides [fileId] reproduce the grid's list, so paging sideways keeps the order the
+     * user saw.
+     */
+    data class Preview(
+        val fileId: String,
+        val mediaOnly: Boolean = false,
+        val folderId: String? = null,
+        val filterByFolder: Boolean = false,
+        val nameQuery: String? = null,
+        val categories: String? = null,
+        val favoritesOnly: Boolean = false,
+        val availableOfflineOnly: Boolean = false,
+        val hiddenOnly: Boolean = false,
+        val archivedOnly: Boolean = false,
+        val sortField: String? = null,
+        val sortDescending: Boolean = false
+    ) : Route
+
+    @Serializable
+    data object Transfers : Route
+
+    @Serializable
+    data object Search : Route
+
+    @Serializable
+    data object Trash : Route
+
+    @Serializable
+    data object Channels : Route
+
+    @Serializable
+    data class NoteEditor(
+        val fileId: String? = null,
+        val folderId: String? = null,
+        val title: String? = null,
+        val sharedText: String? = null
+    ) : Route
+
+    @Serializable
+    data class Collection(val type: String) : Route
+
+    @Serializable
+    data object Settings : Route
+
+    @Serializable
+    data class SettingsSection(val section: String) : Route
+
+    @Serializable
+    data object Exclusions : Route
+
+    @Serializable
+    data object Proxy : Route
+
+    @Serializable
+    data object CloudAccount : Route
+
+    @Serializable
+    data object Devices : Route
+
+    @Serializable
+    data object Accounts : Route
+
+    @Serializable
+    data object Sync : Route
+
+    @Serializable
+    data object Cleaner : Route
+
+    @Serializable
+    data object CloudHealth : Route
+}

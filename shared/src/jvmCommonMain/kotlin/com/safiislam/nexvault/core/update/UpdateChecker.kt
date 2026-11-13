@@ -1,0 +1,83 @@
+package com.safiislam.nexvault.core.update
+
+import com.safiislam.nexvault.core.common.SafeLog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import java.net.HttpURLConnection
+import java.net.URL
+
+/**
+ * An anonymous read of a public endpoint, so a check reveals no more than visiting the releases
+ * page.
+ */
+class UpdateChecker(
+    private val currentVersion: String
+) {
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    suspend fun newerRelease(): AppRelease? = withContext(Dispatchers.IO) {
+        if (RELEASES_URL.isBlank()) return@withContext null // no NexVault release feed configured yet
+        val payload = runCatching { fetchLatest() }
+            .onFailure { SafeLog.w(TAG, "Update check failed", it) }
+            .getOrNull()
+            ?: return@withContext null
+
+        val release = runCatching {
+            json.decodeFromString(GitHubRelease.serializer(), payload)
+        }.getOrNull() ?: return@withContext null
+
+        if (release.draft || release.preRelease) return@withContext null
+        val latest = release.tag.removePrefix("v").trim()
+        if (!isNewer(latest, currentVersion)) return@withContext null
+
+        AppRelease(
+            version = latest,
+            notes = release.body.orEmpty().trim(),
+            pageUrl = release.pageUrl
+        )
+    }
+
+    private fun fetchLatest(): String {
+        val connection = (URL(RELEASES_URL).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = TIMEOUT_MS
+            readTimeout = TIMEOUT_MS
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", USER_AGENT)
+        }
+        return try {
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                error("HTTP ${connection.responseCode}")
+            }
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Compares dotted numbers so 1.10 counts as newer than 1.9. */
+    private fun isNewer(candidate: String, current: String): Boolean {
+        val left = candidate.numbers()
+        val right = current.removePrefix("v").numbers()
+        if (left.isEmpty()) return false
+        for (index in 0 until maxOf(left.size, right.size)) {
+            val a = left.getOrElse(index) { 0 }
+            val b = right.getOrElse(index) { 0 }
+            if (a != b) return a > b
+        }
+        return false
+    }
+
+    private fun String.numbers(): List<Int> = split('.', '-', '_')
+        .mapNotNull { part -> part.takeWhile(Char::isDigit).toIntOrNull() }
+
+    private companion object {
+        const val TAG = "UpdateChecker"
+        const val RELEASES_URL =
+            "" // set to the NexVault GitHub releases API URL once published
+        const val USER_AGENT = "NexVault"
+        const val TIMEOUT_MS = 15_000
+    }
+}

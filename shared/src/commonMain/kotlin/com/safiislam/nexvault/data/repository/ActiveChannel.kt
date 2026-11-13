@@ -1,0 +1,18 @@
+package com.safiislam.nexvault.data.repository
+
+import com.safiislam.nexvault.domain.repository.SettingsRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+
+class ActiveChannel(
+    private val settingsRepository: SettingsRepository
+) {
+
+    suspend fun id(): Long? = settingsRepository.preferences.first().storageChatId
+
+    fun observe(): Flow<Long?> = settingsRepository.preferences
+        .map { it.storageChatId }
+        .distinctUntilChanged()
+}

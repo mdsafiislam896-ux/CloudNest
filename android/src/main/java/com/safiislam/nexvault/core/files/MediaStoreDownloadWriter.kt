@@ -1,0 +1,118 @@
+package com.safiislam.nexvault.core.files
+
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.annotation.RequiresApi
+import com.safiislam.nexvault.core.common.SafeLog
+import java.io.File
+import java.io.OutputStream
+
+/**
+ * Downloads/NexVault survives uninstall and gets indexed; MediaStore owns the entry from Android
+ * 10, older releases write directly.
+ */
+class MediaStoreDownloadWriter(
+    private val context: Context
+) : DownloadWriter {
+
+    /**
+     * [folderPath] mirrors the drive folder, so downloading a folder recreates its tree; null when
+     * the copy could not be written.
+     */
+    override fun write(
+        fileName: String,
+        mimeType: String,
+        folderPath: String?,
+        body: (OutputStream) -> Unit
+    ): String? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            writeThroughMediaStore(fileName, mimeType, folderPath, body)
+        } else {
+            writeDirectly(fileName, folderPath, body)
+        }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun writeThroughMediaStore(
+        fileName: String,
+        mimeType: String,
+        folderPath: String?,
+        body: (OutputStream) -> Unit
+    ): String? {
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath(folderPath))
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+
+        val resolver = context.contentResolver
+        val uri = runCatching { resolver.insert(collection, values) }.getOrNull() ?: return null
+
+        val written = runCatching {
+            resolver.openOutputStream(uri)?.use(body) ?: error("No output stream")
+        }.isSuccess
+
+        if (!written) {
+            runCatching { resolver.delete(uri, null, null) }
+            return null
+        }
+
+        runCatching {
+            resolver.update(
+                uri,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                null,
+                null
+            )
+        }
+
+        return resolver.query(
+            uri,
+            arrayOf(MediaStore.MediaColumns.DATA),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        } ?: uri.toString()
+    }
+
+    private fun writeDirectly(
+        fileName: String,
+        folderPath: String?,
+        body: (OutputStream) -> Unit
+    ): String? {
+        val root = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            FOLDER_NAME
+        )
+        val directory = folderPath?.takeIf { it.isNotBlank() }?.let { File(root, it) } ?: root
+        if (!directory.exists() && !directory.mkdirs()) return null
+
+        val existingNames = directory.list()?.toSet().orEmpty()
+        val target = File(directory, FileNameUtils.uniqueName(fileName) { it in existingNames })
+        return runCatching {
+            target.outputStream().buffered().use(body)
+            target.absolutePath
+        }.getOrElse {
+            SafeLog.w(TAG, "Download write failed", it)
+            target.delete()
+            null
+        }
+    }
+
+    private fun relativePath(folderPath: String?): String {
+        val suffix = folderPath?.trim('/')?.takeIf { it.isNotBlank() } ?: return RELATIVE_PATH
+        return "$RELATIVE_PATH/$suffix"
+    }
+
+    private companion object {
+        const val TAG = "DownloadWriter"
+        const val FOLDER_NAME = "NexVault"
+        val RELATIVE_PATH = "${Environment.DIRECTORY_DOWNLOADS}/$FOLDER_NAME"
+    }
+}

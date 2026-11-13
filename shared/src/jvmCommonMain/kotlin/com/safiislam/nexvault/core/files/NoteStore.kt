@@ -1,0 +1,35 @@
+package com.safiislam.nexvault.core.files
+
+import java.io.File
+
+class NoteStore(
+    private val storagePaths: AppStoragePaths
+) {
+
+    fun write(name: String, body: String, existingPath: String?): File {
+        val directory = File(storagePaths.filesDir, NOTE_DIR).apply { mkdirs() }
+        val target = existingPath?.let(::File)?.takeIf { it.parentFile == directory }
+            ?: File(directory, name)
+        if (target.name != name) {
+            val renamed = File(directory, name)
+            target.renameTo(renamed)
+            renamed.writeText(body)
+            return renamed
+        }
+        target.writeText(body)
+        return target
+    }
+
+    fun read(path: String): String? = File(path).takeIf { it.isFile }?.readText()
+
+    fun fileName(title: String): String {
+        val safe = FileNameUtils.sanitize(title.trim().ifEmpty { UNTITLED })
+        return if (safe.endsWith(EXTENSION, ignoreCase = true)) safe else "$safe$EXTENSION"
+    }
+
+    private companion object {
+        const val NOTE_DIR = "notes"
+        const val EXTENSION = ".md"
+        const val UNTITLED = "Note"
+    }
+}

@@ -1,0 +1,43 @@
+pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+@Suppress("UnstableApiUsage")
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenLocal {
+            content { includeModule("androidx.media3", "media3-decoder-ffmpeg") }
+        }
+        google()
+        mavenCentral()
+        maven("https://jitpack.io") {
+            content {
+                includeGroup("com.github.tdlibx")
+            }
+        }
+        maven("https://mvn.mchv.eu/repository/mchv/") {
+            content {
+                includeGroup("it.tdlight")
+            }
+        }
+    }
+}
+
+rootProject.name = "CloudNest"
+include(":android")
+include(":desktop")
+include(":shared")
+include(":ui")

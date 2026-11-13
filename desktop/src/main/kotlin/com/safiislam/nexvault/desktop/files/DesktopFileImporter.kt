@@ -1,0 +1,48 @@
+package com.safiislam.nexvault.desktop.files
+
+import com.safiislam.nexvault.core.files.AppStoragePaths
+import com.safiislam.nexvault.core.files.ImportSource
+import com.safiislam.nexvault.core.files.expandDirectory
+import com.safiislam.nexvault.core.files.FileImporter
+import com.safiislam.nexvault.core.files.FileNameUtils
+import com.safiislam.nexvault.core.files.ImportedFile
+import java.io.File
+
+/**
+ * Desktop references are plain readable paths, so imports use the original file and never stage a
+ * copy.
+ */
+class DesktopFileImporter(
+    private val storagePaths: AppStoragePaths
+) : FileImporter {
+
+    override fun import(reference: String): ImportedFile? {
+        val file = File(reference)
+        if (!file.isFile || !file.canRead()) return null
+        return ImportedFile(
+            path = file.absolutePath,
+            name = FileNameUtils.sanitize(file.name),
+            sizeBytes = file.length()
+        )
+    }
+
+    override fun discard(imported: ImportedFile) {
+        if (isStaged(imported.path)) File(imported.path).delete()
+    }
+
+    override fun expand(reference: String): List<ImportSource> =
+        expandDirectory(reference) ?: listOf(ImportSource(reference, ""))
+
+    override fun isStaged(path: String): Boolean =
+        File(path).parentFile == File(storagePaths.filesDir, IMPORT_DIR)
+
+    override fun sweepOrphans(referencedPaths: Set<String>) {
+        val staged = File(storagePaths.filesDir, IMPORT_DIR).listFiles() ?: return
+        staged.filter { it.isFile && it.absolutePath !in referencedPaths }
+            .forEach { it.delete() }
+    }
+
+    private companion object {
+        const val IMPORT_DIR = "imports"
+    }
+}

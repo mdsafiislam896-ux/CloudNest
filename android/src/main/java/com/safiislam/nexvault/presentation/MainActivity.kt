@@ -1,0 +1,153 @@
+package com.safiislam.nexvault.presentation
+
+import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Color
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.view.WindowManager
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.content.IntentCompat
+import androidx.core.graphics.drawable.toDrawable
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.safiislam.nexvault.core.common.AppNotifications
+import com.safiislam.nexvault.core.files.PendingShare
+import com.safiislam.nexvault.core.media.PipController
+import com.safiislam.nexvault.domain.repository.SettingsRepository
+import com.safiislam.nexvault.presentation.platform.ProvidePlatformActions
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
+
+/** BiometricPrompt requires a FragmentActivity. */
+class MainActivity : FragmentActivity() {
+
+    private val settingsRepository: SettingsRepository by inject()
+    private val pipController: PipController by inject()
+
+
+    /**
+     * The launch theme can only name a static color, so the window is repainted with the theme's
+     * color to hide the seam.
+     */
+    private fun applyWindowBackground() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        val dark = nightMode == Configuration.UI_MODE_NIGHT_YES
+        val scheme = if (dark) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this)
+        window.setBackgroundDrawable(scheme.background.toArgb().toDrawable())
+    }
+
+    private fun observeScreenshotProtection() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                settingsRepository.preferences
+                    .map { it.appLockEnabled || it.blockScreenCapture }
+                    .distinctUntilChanged()
+                    .collect { locked ->
+                        if (locked) {
+                            window.setFlags(
+                                WindowManager.LayoutParams.FLAG_SECURE,
+                                WindowManager.LayoutParams.FLAG_SECURE
+                            )
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        }
+                        pipController.setSecureWindow(locked)
+                    }
+            }
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        pipController.enter(this)
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipController.onModeChanged(isInPictureInPictureMode)
+    }
+
+    private val pendingShare: PendingShare by inject()
+
+    private val destination = MutableStateFlow<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val shared = sharedUris(intent)
+        val sharedText = intent?.takeIf { it.action == Intent.ACTION_SEND }
+            ?.getStringExtra(Intent.EXTRA_TEXT)
+        pendingShare.offer(shared.map { it.toString() })
+        pendingShare.offerText(sharedText)
+        destination.value = when {
+            shared.isNotEmpty() -> AppNotifications.DESTINATION_FILES
+            !sharedText.isNullOrBlank() -> AppNotifications.DESTINATION_NOTE
+            else -> destinationOf(intent)
+        }
+    }
+
+    private fun sharedUris(intent: Intent?): List<Uri> = when (intent?.action) {
+        Intent.ACTION_SEND ->
+            listOfNotNull(
+                IntentCompat.getParcelableExtra(
+                    intent,
+                    Intent.EXTRA_STREAM,
+                    Uri::class.java
+                )
+            )
+
+        Intent.ACTION_SEND_MULTIPLE ->
+            IntentCompat.getParcelableArrayListExtra(
+                intent,
+                Intent.EXTRA_STREAM,
+                Uri::class.java
+            ).orEmpty()
+
+        else -> emptyList()
+    }
+
+    private fun destinationOf(intent: Intent?): String? = intent
+        ?.takeIf { it.action == AppNotifications.ACTION_OPEN_DESTINATION }
+        ?.getStringExtra(AppNotifications.EXTRA_DESTINATION)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT)
+        )
+        applyWindowBackground()
+        observeScreenshotProtection()
+        handleIntent(intent)
+        setContent {
+            ProvidePlatformActions {
+                NexVaultApp(
+                    pendingShare = pendingShare,
+                    notificationDestination = destination.collectAsStateWithLifecycle().value,
+                    onDestinationHandled = { destination.value = null }
+                )
+            }
+        }
+    }
+}

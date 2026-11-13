@@ -1,0 +1,40 @@
+package com.safiislam.nexvault.core.update
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import androidx.core.app.NotificationManagerCompat
+import com.safiislam.nexvault.core.common.AppNotifications
+import com.safiislam.nexvault.domain.repository.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
+
+/**
+ * Hides a reminder, not the update: later releases are announced and a manual check still reports
+ * this one.
+ */
+class UpdateSkipReceiver : BroadcastReceiver(), KoinComponent {
+
+    private val settingsRepository: SettingsRepository by inject()
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val version = intent.getStringExtra(AppNotifications.EXTRA_VERSION).orEmpty()
+        if (version.isBlank()) return
+
+        NotificationManagerCompat.from(context)
+            .cancel(AppNotifications.NOTIFICATION_ID_UPDATE)
+
+        val pending = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                settingsRepository.update { it.copy(skippedUpdateVersion = version) }
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+}

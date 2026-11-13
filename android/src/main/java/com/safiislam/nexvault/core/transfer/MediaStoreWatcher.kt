@@ -1,0 +1,70 @@
+package com.safiislam.nexvault.core.transfer
+
+import android.content.Context
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import com.safiislam.nexvault.core.common.SafeLog
+import com.safiislam.nexvault.domain.model.BackupTrigger
+import com.safiislam.nexvault.domain.repository.BackupRepository
+import com.safiislam.nexvault.domain.repository.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+/**
+ * The WorkManager trigger covers the background but the system can hold it for minutes; this
+ * catches a new shot at once while the app runs.
+ */
+class MediaStoreWatcher(
+    private val context: Context,
+    private val settingsRepository: SettingsRepository,
+    private val backupRepository: Lazy<BackupRepository>
+) {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var pending: Job? = null
+
+    private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean, uri: Uri?) {
+            pending?.cancel()
+            pending = scope.launch {
+                delay(SETTLE_MS)
+                scanIfEnabled()
+            }
+        }
+    }
+
+    fun start() {
+        runCatching {
+            for (collection in WATCHED) {
+                context.contentResolver.registerContentObserver(collection, true, observer)
+            }
+        }.onFailure { SafeLog.w(TAG, "Could not watch MediaStore", it) }
+    }
+
+    private suspend fun scanIfEnabled() {
+        val prefs = settingsRepository.preferences.first()
+        if (!prefs.autoBackupEnabled || !prefs.instantBackupEnabled) return
+        SafeLog.d(TAG, "New media seen while running, scanning")
+        backupRepository.value.startBackup(BackupTrigger.AUTOMATIC)
+    }
+
+    private companion object {
+        const val TAG = "MediaStoreWatcher"
+
+        /** One capture writes several rows, so let them settle before scanning. */
+        const val SETTLE_MS = 2_000L
+
+        val WATCHED = listOf(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        )
+    }
+}
