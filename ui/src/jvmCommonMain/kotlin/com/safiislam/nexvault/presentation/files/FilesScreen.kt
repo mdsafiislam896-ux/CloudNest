@@ -17,6 +17,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -639,13 +640,15 @@ fun FilesScreen(
                                 }
                             ),
                             button = {
+                                val fabPrimary = MaterialTheme.colorScheme.primary
+                                val fabSecondary = MaterialTheme.colorScheme.secondary
                                 ToggleFloatingActionButton(
                                     checked = showAddMenu,
                                     onCheckedChange = { showAddMenu = it },
                                     containerColor = { progress ->
                                         androidx.compose.ui.graphics.lerp(
-                                            MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.secondary,
+                                            fabPrimary,
+                                            fabSecondary,
                                             progress
                                         )
                                     }
@@ -1088,7 +1091,9 @@ private fun FilesContent(
     padding: PaddingValues,
     onOpenFolder: (String) -> Unit,
     onOpenFile: (String, PreviewSequence) -> Unit,
-    viewModel: FilesViewModel
+    viewModel: FilesViewModel,
+    onFolderMenuClick: ((DriveFolder) -> Unit)? = null,
+    onFileMenuClick: ((DriveFile) -> Unit)? = null
 ) {
     val columns = if (state.viewMode == ViewMode.GRID) state.gridSize else 1
     val dragSelect = rememberDragSelect(

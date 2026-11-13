@@ -66,7 +66,6 @@ fun AppNavHost(
         composable<Route.Onboarding> {
             OnboardingScreen(
                 onOpenProxy = { navController.navigateOnce(Route.Proxy) },
-                onOpenCloud = { navController.navigateOnce(Route.CloudAccount) },
                 onFinished = {
                     navController.navigateOnce(Route.Home) {
                         popUpTo(Route.Onboarding) { inclusive = true }
@@ -213,6 +212,7 @@ fun AppNavHost(
                 onBack = { navController.popBackStackOnce() },
                 onOpenExclusions = { navController.navigateOnce(Route.Exclusions) },
                 onOpenProxy = { navController.navigateOnce(Route.Proxy) },
+                onOpenCloud = { navController.navigateOnce(Route.CloudAccount) },
                 onLoggedOut = {
                     navController.navigateOnce(Route.Onboarding) {
                         popUpTo(0) { inclusive = true }
