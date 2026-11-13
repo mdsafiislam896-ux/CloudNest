@@ -37,8 +37,16 @@ kotlin {
         val jvmCommonMain = create("jvmCommonMain") {
             dependsOn(commonMain.get())
         }
+        commonTest {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
         val jvmCommonTest = create("jvmCommonTest") {
             dependsOn(commonTest.get())
+            dependencies {
+                implementation(kotlin("test"))
+            }
         }
         named("androidMain") {
             dependsOn(jvmCommonMain)
@@ -63,6 +71,7 @@ kotlin {
         named("desktopTest") {
             dependsOn(jvmCommonTest)
             dependencies {
+                implementation(kotlin("test"))
                 implementation(libs.junit)
             }
         }
