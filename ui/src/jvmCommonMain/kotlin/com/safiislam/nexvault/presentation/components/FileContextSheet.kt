@@ -77,7 +77,7 @@ fun FileContextSheet(
 ) {
     if (!visible) return
 
-    val sheetState = rememberModalBottomSheetState(skipPartialExpansion = true)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scheme = MaterialTheme.colorScheme
     val isDark = scheme.background.luminance() < 0.5f
 

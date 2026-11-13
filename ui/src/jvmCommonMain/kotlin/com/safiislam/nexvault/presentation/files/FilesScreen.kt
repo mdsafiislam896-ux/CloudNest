@@ -254,9 +254,6 @@ fun FilesScreen(
     var contextSheetFile by remember { mutableStateOf<DriveFile?>(null) }
     var contextSheetFolder by remember { mutableStateOf<DriveFolder?>(null) }
     var confirmTrashContextItem by remember { mutableStateOf(false) }
-    // Per-file premium context sheet
-    var contextSheetFile by remember { mutableStateOf<DriveFile?>(null) }
-    var contextSheetFolder by remember { mutableStateOf<DriveFolder?>(null) }
     val uploadPicker = LocalMultiFilePicker.current
     val onPickUploads = {
         uploadPicker.pick { references ->
