@@ -114,6 +114,7 @@ fun FileListItem(
         Box {
             FileThumbnail(
                 file = file,
+                cleanFileMode = true,
                 contentDescription = null,
                 modifier = Modifier
                     .size(if (compact) 42.dp else 54.dp)

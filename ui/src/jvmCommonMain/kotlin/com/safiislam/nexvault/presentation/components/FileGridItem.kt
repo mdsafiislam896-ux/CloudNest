@@ -63,10 +63,11 @@ fun FileGridItem(
         Box {
             FileThumbnail(
                 file = file,
+                cleanFileMode = true,
                 contentDescription = if (compact) file.name else null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f)
+                    .aspectRatio(1.25f)
             )
             if (selected) {
                 Icon(

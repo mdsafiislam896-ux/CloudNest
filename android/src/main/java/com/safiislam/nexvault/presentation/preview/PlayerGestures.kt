@@ -65,12 +65,14 @@ fun PlayerGestureArea(
     onAdjustStart: () -> Unit,
     dragEnabled: Boolean,
     chromeVisible: Boolean,
+    onDoubleTapSeek: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val activity = LocalActivity.current
     val tap by rememberUpdatedState(onTap)
     val adjustStart by rememberUpdatedState(onAdjustStart)
+    val doubleTapSeek by rememberUpdatedState(onDoubleTapSeek)
 
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val maxVolume = remember(audioManager) {
@@ -87,6 +89,7 @@ fun PlayerGestureArea(
         )
     }
     var adjustment by remember { mutableStateOf<AdjustmentLevel?>(null) }
+    var seekHint by remember { mutableStateOf<String?>(null) }
 
     var overrodeBrightness by remember(activity) { mutableStateOf(false) }
     DisposableEffect(activity) {
@@ -107,6 +110,12 @@ fun PlayerGestureArea(
         adjustment = null
     }
 
+    LaunchedEffect(seekHint) {
+        if (seekHint == null) return@LaunchedEffect
+        delay(650.milliseconds)
+        seekHint = null
+    }
+
     val toggleControlsLabel = stringResource(Res.string.player_toggle_controls)
     Box(modifier = modifier.fillMaxSize()) {
         Box(
@@ -118,8 +127,17 @@ fun PlayerGestureArea(
                         true
                     }
                 }
-                .pointerInput(Unit) {
-                    detectTapGestures { tap() }
+                .pointerInput(dragEnabled) {
+                    detectTapGestures(
+                        onTap = { tap() },
+                        onDoubleTap = { offset ->
+                            if (dragEnabled && doubleTapSeek != null) {
+                                val forward = offset.x >= size.width / 2f
+                                doubleTapSeek?.invoke(forward)
+                                seekHint = if (forward) "+10s ⏩" else "⏪ -10s"
+                            }
+                        }
+                    )
                 }
                 .pointerInput(dragEnabled, maxVolume) {
                     if (!dragEnabled) return@pointerInput
@@ -159,6 +177,28 @@ fun PlayerGestureArea(
             modifier = Modifier.align(Alignment.Center)
         ) {
             adjustment?.let { AdjustmentHud(it) }
+        }
+
+        AnimatedVisibility(
+            visible = seekHint != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            seekHint?.let { hint ->
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = Color.Black.copy(alpha = 0.85f),
+                    contentColor = Color.White
+                ) {
+                    Text(
+                        text = hint,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                    )
+                }
+            }
         }
     }
 }

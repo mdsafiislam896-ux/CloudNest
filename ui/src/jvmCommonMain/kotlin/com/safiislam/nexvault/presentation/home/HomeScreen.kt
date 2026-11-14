@@ -7,6 +7,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.VideoFile
+import androidx.compose.ui.unit.sp
+import com.safiislam.nexvault.domain.model.FileCategory
 import com.safiislam.nexvault.presentation.components.pressScale
 import com.safiislam.nexvault.presentation.components.IconTile
 import androidx.compose.animation.AnimatedVisibility
@@ -239,21 +244,6 @@ fun HomeScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { BottomBarSnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            Box(
-                modifier = Modifier
-                    .padding(bottom = LocalBottomBarInset.current + 8.dp)
-                    .size(56.dp)
-                    .shadow(16.dp, CircleShape, ambientColor = Color(0xFF7C5CFC), spotColor = Color(0xFF9D4EDD))
-                    .clip(CircleShape)
-                    .background(Color(0xFF121216))
-                    .border(1.5.dp, Color(0xFF9D4EDD).copy(alpha = 0.5f), CircleShape)
-                    .clickable { showCreateFolder = true },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Create folder", tint = Color.White, modifier = Modifier.size(28.dp))
-            }
-        },
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(Res.string.app_name)) },
@@ -319,7 +309,7 @@ fun HomeScreen(
             contentPadding = padding.add(
                 horizontal = 16.dp,
                 top = 8.dp,
-                bottom = 24.dp + LocalBottomBarInset.current
+                bottom = 48.dp + LocalBottomBarInset.current
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -406,12 +396,12 @@ fun HomeScreen(
             }
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Folders",
+                        text = "Categories",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -419,76 +409,82 @@ fun HomeScreen(
                 }
             }
             item {
-                val foldersToShow = if (state.favoriteFolders.isNotEmpty()) {
-                    state.favoriteFolders.take(4)
-                } else {
-                    listOf(
-                        DriveFolder(
-                            id = "research",
-                            parentId = null,
-                            name = "Research",
-                            isHidden = false,
-                            isArchived = false,
-                            isFavorite = true,
-                            trashedAt = null,
-                            createdAt = 0L,
-                            modifiedAt = 0L,
-                            fileCount = 78
-                        ),
-                        DriveFolder(
-                            id = "homework",
-                            parentId = null,
-                            name = "Home Work",
-                            isHidden = false,
-                            isArchived = false,
-                            isFavorite = true,
-                            trashedAt = null,
-                            createdAt = 0L,
-                            modifiedAt = 0L,
-                            fileCount = 154
-                        ),
-                        DriveFolder(
-                            id = "guidelines",
-                            parentId = null,
-                            name = "Guidelines",
-                            isHidden = false,
-                            isArchived = false,
-                            isFavorite = true,
-                            trashedAt = null,
-                            createdAt = 0L,
-                            modifiedAt = 0L,
-                            fileCount = 52
-                        ),
-                        DriveFolder(
-                            id = "freelance",
-                            parentId = null,
-                            name = "Freelance",
-                            isHidden = false,
-                            isArchived = false,
-                            isFavorite = true,
-                            trashedAt = null,
-                            createdAt = 0L,
-                            modifiedAt = 0L,
-                            fileCount = 259
-                        )
+                val videoSlice = state.storage.firstOrNull { it.category == FileCategory.VIDEO }
+                val musicSlice = state.storage.firstOrNull { it.category == FileCategory.AUDIO }
+                val docSlice = state.storage.firstOrNull { it.category == FileCategory.DOCUMENT }
+
+                val videoCount = videoSlice?.fileCount ?: 0
+                val musicCount = musicSlice?.fileCount ?: 0
+                val docCount = docSlice?.fileCount ?: 0
+
+                val videoPct = if (state.totalFiles > 0) (videoCount * 100 / state.totalFiles) else 0
+                val musicPct = if (state.totalFiles > 0) (musicCount * 100 / state.totalFiles) else 0
+                val docPct = if (state.totalFiles > 0) (docCount * 100 / state.totalFiles) else 0
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CategoryPillCard(
+                        title = "Videos",
+                        stat = if (state.totalFiles > 0) "$videoPct%" else "$videoCount files",
+                        sub = Formatters.bytes(videoSlice?.totalBytes ?: 0L),
+                        icon = Icons.Outlined.VideoFile,
+                        containerColor = Color(0xFFE65100).copy(alpha = 0.85f),
+                        modifier = Modifier.weight(1f)
+                    )
+                    CategoryPillCard(
+                        title = "Music",
+                        stat = if (state.totalFiles > 0) "$musicPct%" else "$musicCount files",
+                        sub = Formatters.bytes(musicSlice?.totalBytes ?: 0L),
+                        icon = Icons.Outlined.AudioFile,
+                        containerColor = Color(0xFFC2185B).copy(alpha = 0.85f),
+                        modifier = Modifier.weight(1f)
+                    )
+                    CategoryPillCard(
+                        title = "Docs",
+                        stat = if (state.totalFiles > 0) "$docPct%" else "$docCount files",
+                        sub = Formatters.bytes(docSlice?.totalBytes ?: 0L),
+                        icon = Icons.Outlined.Description,
+                        containerColor = Color(0xFF00897B).copy(alpha = 0.85f),
+                        modifier = Modifier.weight(1f)
                     )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    foldersToShow.chunked(2).forEach { rowFolders ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            rowFolders.forEach { folder ->
-                                FolderGridItem(
-                                    folder = folder,
-                                    onClick = { onOpenFolder(folder.id) },
-                                    onLongClick = { onOpenFolder(folder.id) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            if (rowFolders.size == 1) {
-                                Spacer(Modifier.weight(1f))
+            }
+            if (state.favoriteFolders.isNotEmpty()) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Favorite Folders",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                item {
+                    val foldersToShow = state.favoriteFolders.take(4)
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        foldersToShow.chunked(2).forEach { rowFolders ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                rowFolders.forEach { folder ->
+                                    FolderGridItem(
+                                        folder = folder,
+                                        onClick = { onOpenFolder(folder.id) },
+                                        onLongClick = { onOpenFolder(folder.id) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (rowFolders.size == 1) {
+                                    Spacer(Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -1268,6 +1264,55 @@ private fun HeroStorageCard(
                     .align(Alignment.CenterStart)
                     .clip(CircleShape)
                     .background(Color.White)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryPillCard(
+    title: String,
+    stat: String,
+    sub: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(containerColor)
+            .padding(vertical = 14.dp, horizontal = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.9f),
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = stat,
+            style = MaterialTheme.typography.titleLarge,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        if (sub.isNotEmpty()) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = sub,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 10.sp,
+                maxLines = 1
             )
         }
     }

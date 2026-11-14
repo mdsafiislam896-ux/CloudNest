@@ -380,6 +380,14 @@ fun MediaPlayer(
                 onAdjustStart = { if (visibleControls) notifyControls(false) },
                 dragEnabled = !locked && !audioOnly,
                 chromeVisible = controlsVisible,
+                onDoubleTapSeek = { forward ->
+                    player?.let { p ->
+                        val delta = if (forward) 10_000L else -10_000L
+                        val newPos = (p.currentPosition + delta).coerceIn(0L, p.duration.coerceAtLeast(0L))
+                        p.seekTo(newPos)
+                        interactionTick++
+                    }
+                },
                 modifier = Modifier.matchParentSize()
             )
         }
