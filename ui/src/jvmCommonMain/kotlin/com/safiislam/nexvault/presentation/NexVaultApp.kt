@@ -607,11 +607,6 @@ private fun IosTabItem(
         }
     }
 }
-            color = tint,
-            maxLines = 1
-        )
-    }
-}
 
 @Composable
 private fun NavBarLayout(

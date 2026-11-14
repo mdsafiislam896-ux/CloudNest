@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.safiislam.nexvault.presentation.components.pressScale
 import com.safiislam.nexvault.presentation.components.IconTile
