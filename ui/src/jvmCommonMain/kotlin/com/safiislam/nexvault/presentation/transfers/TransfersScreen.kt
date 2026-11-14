@@ -1,5 +1,14 @@
 package com.safiislam.nexvault.presentation.transfers
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import com.safiislam.nexvault.presentation.components.NexTopAppBar
 import com.safiislam.nexvault.presentation.components.NexDropdownMenu
 import androidx.compose.foundation.layout.Arrangement
@@ -327,16 +336,6 @@ private fun transferRate(transfer: TransferTask): String {
     val eta = transfer.etaSeconds?.let { Formatters.eta(it) } ?: return speed
     return "$speed · $eta"
 }
-
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 
 @Composable
 private fun TransferRow(

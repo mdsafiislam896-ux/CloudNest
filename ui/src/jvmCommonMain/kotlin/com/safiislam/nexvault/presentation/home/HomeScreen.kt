@@ -421,10 +421,54 @@ fun HomeScreen(
                     state.favoriteFolders.take(4)
                 } else {
                     listOf(
-                        DriveFolder("research", "Research", 0, 78, 0, null, 0, false, false, false, 0),
-                        DriveFolder("homework", "Home Work", 0, 154, 0, null, 0, false, false, false, 0),
-                        DriveFolder("guidelines", "Guidelines", 0, 52, 0, null, 0, false, false, false, 0),
-                        DriveFolder("freelance", "Freelance", 0, 259, 0, null, 0, false, false, false, 0)
+                        DriveFolder(
+                            id = "research",
+                            parentId = null,
+                            name = "Research",
+                            isHidden = false,
+                            isArchived = false,
+                            isFavorite = true,
+                            trashedAt = null,
+                            createdAt = 0L,
+                            modifiedAt = 0L,
+                            fileCount = 78
+                        ),
+                        DriveFolder(
+                            id = "homework",
+                            parentId = null,
+                            name = "Home Work",
+                            isHidden = false,
+                            isArchived = false,
+                            isFavorite = true,
+                            trashedAt = null,
+                            createdAt = 0L,
+                            modifiedAt = 0L,
+                            fileCount = 154
+                        ),
+                        DriveFolder(
+                            id = "guidelines",
+                            parentId = null,
+                            name = "Guidelines",
+                            isHidden = false,
+                            isArchived = false,
+                            isFavorite = true,
+                            trashedAt = null,
+                            createdAt = 0L,
+                            modifiedAt = 0L,
+                            fileCount = 52
+                        ),
+                        DriveFolder(
+                            id = "freelance",
+                            parentId = null,
+                            name = "Freelance",
+                            isHidden = false,
+                            isArchived = false,
+                            isFavorite = true,
+                            trashedAt = null,
+                            createdAt = 0L,
+                            modifiedAt = 0L,
+                            fileCount = 259
+                        )
                     )
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
