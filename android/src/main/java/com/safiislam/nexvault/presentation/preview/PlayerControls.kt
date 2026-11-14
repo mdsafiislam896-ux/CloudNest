@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SubtitlesOff
@@ -146,6 +148,7 @@ fun PlayerControls(
     var showSpeeds by remember { mutableStateOf(false) }
     var showAudioTracks by remember { mutableStateOf(false) }
     var showTextTracks by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
 
     val activity = LocalActivity.current
 
@@ -233,163 +236,28 @@ fun PlayerControls(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
-                    .padding(top = TOP_BAR_HEIGHT, start = 12.dp, end = 12.dp)
+                    .padding(top = 12.dp, start = 16.dp, end = 16.dp)
                     .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.Top
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    FlowRow(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CompositionLocalProvider(
-                            LocalLayoutDirection provides LayoutDirection.Ltr
-                        ) {
-                            ExtraControl(expanded || audioOnly) {
-                                ControlButton(
-                                    icon = if (muted) {
-                                        Icons.AutoMirrored.Filled.VolumeOff
-                                    } else {
-                                        Icons.AutoMirrored.Filled.VolumeUp
-                                    },
-                                    description = if (muted) {
-                                        stringResource(Res.string.player_unmute)
-                                    } else {
-                                        stringResource(Res.string.player_mute)
-                                    },
-                                    active = muted,
-                                    onClick = {
-                                        onInteraction()
-                                        muted = !muted
-                                        player.volume = if (muted) 0f else 1f
-                                    }
-                                )
-                            }
-                            if (onEnterPip != null) {
-                                ControlButton(
-                                    icon = Icons.Filled.PictureInPictureAlt,
-                                    description = stringResource(
-                                        Res.string.player_picture_in_picture
-                                    ),
-                                    onClick = {
-                                        onInteraction()
-                                        onEnterPip()
-                                    }
-                                )
-                            }
-                            if (!audioOnly) {
-                                ControlButton(
-                                    icon = Icons.Filled.Lock,
-                                    description = stringResource(Res.string.player_lock_controls),
-                                    onClick = {
-                                        onInteraction()
-                                        onLock()
-                                    }
-                                )
-                            }
-                            ExtraControl(expanded) {
-                                ControlButton(
-                                    icon = rotation.icon,
-                                    description = rotation.description,
-                                    active = rotation != PlayerRotation.AUTO,
-                                    onClick = {
-                                        onInteraction()
-                                        rotation = rotation.next()
-                                        activity?.requestedOrientation = rotation.orientation
-                                    }
-                                )
-                            }
-                            if (!audioOnly) {
-                                ExtraControl(expanded) {
-                                    ControlButton(
-                                        icon = resizeMode.icon,
-                                        description = resizeMode.description,
-                                        onClick = {
-                                            onInteraction()
-                                            onCycleResizeMode()
-                                        }
-                                    )
-                                }
-                            }
-                            ExtraControl(expanded) {
-                                ControlButton(
-                                    icon = Icons.Filled.SlowMotionVideo,
-                                    description = stringResource(Res.string.preview_playback_speed),
-                                    active = speed != 1f,
-                                    onClick = {
-                                        onInteraction()
-                                        showSpeeds = true
-                                    }
-                                )
-                            }
-                            ExtraControl(expanded) {
-                                ControlButton(
-                                    icon = if (repeatOne) {
-                                        Icons.Filled.RepeatOne
-                                    } else {
-                                        Icons.Filled.Repeat
-                                    },
-                                    description = if (repeatOne) stringResource(Res.string.player_repeat_off) else stringResource(
-                                        Res.string.player_repeat_one
-                                    ),
-                                    active = repeatOne,
-                                    onClick = {
-                                        onInteraction()
-                                        repeatOne = !repeatOne
-                                        player.repeatMode = if (repeatOne) {
-                                            Player.REPEAT_MODE_ONE
-                                        } else {
-                                            Player.REPEAT_MODE_OFF
-                                        }
-                                    }
-                                )
-                            }
-                            if (!audioOnly) {
-                                ExtraControl(expanded || textTracks.isNotEmpty()) {
-                                    ControlButton(
-                                        icon = if (subtitlesOn) {
-                                            Icons.Filled.Subtitles
-                                        } else {
-                                            Icons.Filled.SubtitlesOff
-                                        },
-                                        description = if (subtitlesOn) {
-                                            stringResource(Res.string.player_hide_subtitles)
-                                        } else {
-                                            stringResource(Res.string.player_show_subtitles)
-                                        },
-                                        active = subtitlesOn,
-                                        enabled = textTracks.isNotEmpty(),
-                                        onClick = {
-                                            onInteraction()
-                                            showTextTracks = true
-                                        }
-                                    )
-                                }
-                            }
-                            ExtraControl(expanded || audioTracks.size > 1) {
-                                ControlButton(
-                                    icon = Icons.Filled.Audiotrack,
-                                    description = stringResource(Res.string.player_audio_track),
-                                    enabled = audioTracks.isNotEmpty(),
-                                    onClick = {
-                                        onInteraction()
-                                        showAudioTracks = true
-                                    }
-                                )
-                            }
+                if (onEnterPip != null) {
+                    ControlButton(
+                        icon = Icons.Filled.PictureInPictureAlt,
+                        description = stringResource(Res.string.player_picture_in_picture),
+                        onClick = {
+                            onInteraction()
+                            onEnterPip()
                         }
-                    }
+                    )
+                    Spacer(Modifier.width(8.dp))
                 }
                 ControlButton(
-                    icon = if (expanded) Icons.Filled.ChevronRight else Icons.Filled.ChevronLeft,
-                    description = if (expanded) stringResource(Res.string.player_fewer_controls) else stringResource(
-                        Res.string.player_more_controls
-                    ),
+                    icon = Icons.Filled.Settings,
+                    description = "Playback settings",
                     onClick = {
                         onInteraction()
-                        expanded = !expanded
+                        showSettingsSheet = true
                     }
                 )
             }
@@ -480,9 +348,151 @@ fun PlayerControls(
                         color = playerSecondaryColor()
                     )
                 }
+                if (!audioOnly) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ControlButton(
+                                icon = Icons.Filled.Lock,
+                                description = stringResource(Res.string.player_lock_controls),
+                                onClick = {
+                                    onInteraction()
+                                    onLock()
+                                }
+                            )
+                            ControlButton(
+                                icon = resizeMode.icon,
+                                description = resizeMode.description,
+                                onClick = {
+                                    onInteraction()
+                                    onCycleResizeMode()
+                                }
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ControlButton(
+                                icon = if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                                description = if (muted) stringResource(Res.string.player_unmute) else stringResource(Res.string.player_mute),
+                                active = muted,
+                                onClick = {
+                                    onInteraction()
+                                    muted = !muted
+                                    player.volume = if (muted) 0f else 1f
+                                }
+                            )
+                            ControlButton(
+                                icon = rotation.icon,
+                                description = rotation.description,
+                                active = rotation != PlayerRotation.AUTO,
+                                onClick = {
+                                    onInteraction()
+                                    rotation = rotation.next()
+                                    activity?.requestedOrientation = rotation.orientation
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
       }
+    }
+
+    if (showSettingsSheet) {
+        ModalBottomSheet(onDismissRequest = { showSettingsSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    text = "Playback Settings",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showSettingsSheet = false
+                            showSpeeds = true
+                        }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.SlowMotionVideo, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text(stringResource(Res.string.preview_playback_speed), style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(speedLabel(speed), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
+                if (audioTracks.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showSettingsSheet = false
+                                showAudioTracks = true
+                            }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Audiotrack, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Text(stringResource(Res.string.player_audio_track), style = MaterialTheme.typography.bodyLarge)
+                        }
+                        Text("${audioTracks.size} available", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (textTracks.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showSettingsSheet = false
+                                showTextTracks = true
+                            }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (subtitlesOn) Icons.Filled.Subtitles else Icons.Filled.SubtitlesOff, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Text(stringResource(Res.string.player_subtitles), style = MaterialTheme.typography.bodyLarge)
+                        }
+                        Text(if (subtitlesOn) "On" else "Off", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            repeatOne = !repeatOne
+                            player.repeatMode = if (repeatOne) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                        }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (repeatOne) Icons.Filled.RepeatOne else Icons.Filled.Repeat, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text("Repeat One", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(if (repeatOne) "On" else "Off", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
     }
 
     if (showSpeeds) {

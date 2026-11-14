@@ -837,10 +837,11 @@ class TdLibTelegramClient(
         val thumbnail = thumbnailPath?.let {
             TdApi.InputThumbnail(TdApi.InputFileLocal(it), THUMBNAIL_EDGE, THUMBNAIL_EDGE)
         }
+        val isEncrypted = mimeType == "application/octet-stream"
         val content = TdApi.InputMessageDocument(
             TdApi.InputFileLocal(localPath),
             thumbnail,
-            true,
+            isEncrypted,
             captionOf(caption)
         )
         var finished = false
@@ -900,7 +901,14 @@ class TdLibTelegramClient(
         val pending: TdApi.Message =
             paced { send(TdApi.SendMessage(chatId, null, null, null, null, content)) }
         sentMessageId = pending.id
-        pendingFile.complete((pending.content as? TdApi.MessageDocument)?.document?.document?.id)
+        val pendingFileContentId = when (val c = pending.content) {
+            is TdApi.MessageDocument -> c.document?.document?.id
+            is TdApi.MessageVideo -> c.video?.video?.id
+            is TdApi.MessagePhoto -> c.photo?.sizes?.maxByOrNull { it.photo.size }?.photo?.id
+            is TdApi.MessageAudio -> c.audio?.audio?.id
+            else -> null
+        }
+        pendingFile.complete(pendingFileContentId)
         pendingMessageId.complete(pending.id)
         trySend(TelegramUploadEvent.Started(pending.id))
 

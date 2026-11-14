@@ -53,18 +53,13 @@ object CaptionStyler {
         val category = SmartOrganizer.categorize(name, mime)
         val (emoji, label) = labelFor(category)
 
-        val tags = mutableListOf("#$label")
-        path.split('/').map { tagOf(it) }.filter { it.isNotEmpty() }.take(3).forEach { tags += "#$it" }
-
         return buildString {
-            append("☁️ CloudNest · $emoji $label\n")
             if (name.isNotEmpty()) {
-                append(name)
+                append("$emoji $name")
                 if (size != null) append(" · ").append(formatSize(size))
                 append('\n')
             }
             if (path.isNotEmpty()) append("📁 ").append(path).append('\n')
-            append(tags.joinToString(" ")).append('\n')
         }
     }
 

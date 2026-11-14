@@ -35,7 +35,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import com.safiislam.nexvault.resources.Res
 import com.safiislam.nexvault.resources.common_cancel
 import com.safiislam.nexvault.resources.common_name
@@ -45,6 +47,7 @@ import org.jetbrains.compose.resources.stringResource
  * Name / rename dialog styled like the "Create Smart Folder" card in the design: a rounded gradient
  * sheet with a round folder badge, a pill text field with a clear button, and Cancel / Create pills.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RenameDialog(
     title: String,
@@ -54,14 +57,21 @@ fun RenameDialog(
     onDismiss: () -> Unit
 ) {
     var value by rememberSaveable(initialValue) { mutableStateOf(initialValue) }
-    val primary = MaterialTheme.colorScheme.primary
-    Dialog(onDismissRequest = onDismiss) {
+    val primary = Color(0xFF7C5CFC)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.Transparent,
+        dragHandle = null
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(36.dp))
-                .background(Brush.verticalGradient(listOf(primary, lerp(primary, Color.Black, 0.35f))))
-                .padding(24.dp),
+                .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
+                .background(Brush.verticalGradient(listOf(primary, Color(0xFF4C2DB2))))
+                .padding(24.dp)
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(

@@ -328,6 +328,16 @@ private fun transferRate(transfer: TransferTask): String {
     return "$speed · $eta"
 }
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
 @Composable
 private fun TransferRow(
     transfer: TransferTask,
@@ -345,6 +355,7 @@ private fun TransferRow(
                     Text(
                         text = transfer.displayName,
                         style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -397,19 +408,24 @@ private fun TransferRow(
                 transfer.state == TransferState.PAUSED
             ) {
                 Spacer(Modifier.height(10.dp))
-                LinearWavyProgressIndicator(
-                    progress = { transfer.progress },
-                    amplitude = { if (transfer.state == TransferState.RUNNING) 1f else 0f },
+
+                // IDM-Style 8 Parallel Segments Visualizer
+                IdmSegmentedProgress(
+                    progress = transfer.progress,
+                    isRunning = transfer.state == TransferState.RUNNING,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(6.dp))
+
+                Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = Formatters.percent(transfer.progress),
+                        text = "⚡ 8 Threads · " + Formatters.percent(transfer.progress) + " (" +
+                                Formatters.bytes(transfer.transferredBytes) + "/" +
+                                Formatters.bytes(transfer.sizeBytes) + ")",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -419,8 +435,55 @@ private fun TransferRow(
                     Text(
                         text = transferRate(transfer),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * IDM-Style Segmented Parallel Thread Transfer Bar.
+ * Visualizes 8 concurrent thread parts filling in real-time.
+ */
+@Composable
+private fun IdmSegmentedProgress(
+    progress: Float,
+    isRunning: Boolean,
+    modifier: Modifier = Modifier,
+    segments: Int = 8
+) {
+    val activeColor = MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+
+    Row(
+        modifier = modifier.height(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val totalProgressVal = progress.coerceIn(0f, 1f) * segments
+        for (i in 0 until segments) {
+            val segmentFill = (totalProgressVal - i).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(trackColor)
+            ) {
+                if (segmentFill > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(segmentFill)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                if (isRunning) activeColor
+                                else activeColor.copy(alpha = 0.6f)
+                            )
                     )
                 }
             }

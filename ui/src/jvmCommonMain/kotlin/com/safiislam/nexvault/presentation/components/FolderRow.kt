@@ -67,21 +67,21 @@ fun FolderRow(
     )
     val normalBorderColor = scheme.outline.copy(alpha = 0.14f)
 
+    val dark = scheme.background.luminance() < 0.5f
+    val cardBg = if (selected) scheme.primaryContainer.copy(alpha = 0.85f) else if (dark) Color(0xFF1E1E24) else Color.White
+    val cardText = if (dark) Color.White else Color(0xFF1A1A1A)
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 3.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
             .pressScale(0.97f)
-            .clip(RoundedCornerShape(24.dp))
-            .background(
-                if (selected) scheme.primaryContainer.copy(alpha = 0.85f)
-                else scheme.surfaceContainerLow
-            )
+            .clip(RoundedCornerShape(22.dp))
+            .background(cardBg)
             .border(
-                width = if (selected) 1.5.dp else 1.dp,
-                brush = if (selected) selectedBorderBrush
-                        else Brush.verticalGradient(listOf(normalBorderColor, normalBorderColor)),
-                shape = RoundedCornerShape(24.dp)
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) Color(0xFF7C5CFC) else Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(22.dp)
             )
             .combinedClickable(
                 onLongClickLabel = stringResource(Res.string.common_select),
@@ -89,26 +89,26 @@ fun FolderRow(
                 onLongClick = onLongClick
             )
             .padding(
-                start = 12.dp,
-                end = if (onMenuClick != null) 4.dp else 12.dp,
-                top = if (compact) 4.dp else 8.dp,
-                bottom = if (compact) 4.dp else 8.dp
+                start = 14.dp,
+                end = if (onMenuClick != null) 4.dp else 14.dp,
+                top = if (compact) 6.dp else 10.dp,
+                bottom = if (compact) 6.dp else 10.dp
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // ── Gradient folder badge ─────────────────────────────────────────────
+        // ── Golden folder badge ─────────────────────────────────────────────
         Box(
             modifier = Modifier
-                .size(if (compact) 40.dp else 50.dp)
+                .size(if (compact) 44.dp else 52.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(gradientBrush),
+                .background(Color(0xFFFFB800).copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Filled.Folder,
                 contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(if (compact) 22.dp else 28.dp)
+                tint = Color(0xFFFFB800),
+                modifier = Modifier.size(if (compact) 26.dp else 30.dp)
             )
             if (selected) {
                 Box(
@@ -133,15 +133,16 @@ fun FolderRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = folder.name,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = scheme.onSurface
+                color = cardText
             )
             Text(
                 text = folder.contentsLabel(),
                 style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+                color = if (dark) Color(0xFF9E9E9E) else Color(0xFF757575),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

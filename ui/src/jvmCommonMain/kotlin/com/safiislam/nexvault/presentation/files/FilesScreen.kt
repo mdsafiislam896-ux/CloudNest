@@ -576,7 +576,12 @@ fun FilesScreen(
                     } else {
                         NexTopAppBar(
                             colors = liftedTopAppBarColors(lifted),
-                            title = { Text(stringResource(Res.string.files)) },
+                            title = {
+                                Text(
+                                    text = if (onBack == null) "My Folders 🤙" else stringResource(Res.string.files),
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            },
                             navigationIcon = {
                                 onBack?.let {
                                     IconButton(onClick = it) {
@@ -588,16 +593,22 @@ fun FilesScreen(
                                 }
                             },
                             actions = {
-                                RefreshAction(
-                                    refreshing = refreshing,
-                                    onRefresh = viewModel::refresh
-                                )
-                                IconButton(onClick = onOpenSearch) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                        .clickable { onOpenSearch() },
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(
                                         Icons.Filled.Search,
-                                        contentDescription = stringResource(Res.string.files_search)
+                                        contentDescription = stringResource(Res.string.files_search),
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
+                                Spacer(Modifier.width(4.dp))
                                 IconButton(onClick = { showCreateFolder = true }) {
                                     Icon(
                                         Icons.Filled.CreateNewFolder,
@@ -647,8 +658,8 @@ fun FilesScreen(
                                     onCheckedChange = { showAddMenu = it },
                                     containerColor = { progress ->
                                         androidx.compose.ui.graphics.lerp(
-                                            fabPrimary,
-                                            fabSecondary,
+                                            Color(0xFF1E1E24),
+                                            Color(0xFF7C5CFC),
                                             progress
                                         )
                                     }
@@ -660,7 +671,7 @@ fun FilesScreen(
                                             Icons.Filled.Add
                                         },
                                         contentDescription = stringResource(Res.string.common_add),
-                                        tint = MaterialTheme.colorScheme.onPrimary
+                                        tint = Color.White
                                     )
                                 }
                             }

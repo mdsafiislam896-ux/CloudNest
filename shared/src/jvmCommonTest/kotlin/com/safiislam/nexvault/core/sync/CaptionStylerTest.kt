@@ -10,7 +10,7 @@ class CaptionStylerTest {
 
     @Test fun headerThenManifestRoundTripsExactly() {
         val styled = CaptionStyler.style(manifest)
-        assertTrue(styled.text.contains("#Photos"))
+        assertTrue(styled.text.contains("holiday.jpg"))
         assertTrue(styled.text.contains("📁 Trips/2026"))
         assertEquals(manifest, CaptionStyler.strip(styled.text))
     }

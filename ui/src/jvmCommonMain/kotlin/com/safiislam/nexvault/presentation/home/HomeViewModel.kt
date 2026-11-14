@@ -193,6 +193,12 @@ class HomeViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
+    fun createFolder(name: String) {
+        viewModelScope.launch {
+            fileRepository.createFolder(null, name)
+        }
+    }
+
     /** A folder scan never reaches files added by hand, or canceled or failed on their way up. */
     fun backUpPending() {
         if (_scanning.value) return

@@ -12,8 +12,11 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -463,9 +466,10 @@ private fun AudioStage(player: Player, fallbackTitle: String, modifier: Modifier
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Surface(
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 3.dp,
+            shadowElevation = 20.dp,
+            border = BorderStroke(1.dp, Brush.verticalGradient(listOf(ComposeColor.White.copy(alpha = 0.25f), ComposeColor.Transparent))),
             modifier = Modifier.size(ARTWORK_SIZE)
         ) {
             if (artwork != null) {
@@ -476,11 +480,23 @@ private fun AudioStage(player: Player, fallbackTitle: String, modifier: Modifier
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                Box(contentAlignment = Alignment.Center) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    ComposeColor(0xFF7C5CFC).copy(alpha = 0.35f),
+                                    ComposeColor(0xFF1E1B2E)
+                                )
+                            )
+                        )
+                ) {
                     Icon(
                         imageVector = Icons.Filled.MusicNote,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = ComposeColor(0xFFA78BFA),
                         modifier = Modifier.size(AUDIO_ICON_SIZE)
                     )
                 }

@@ -32,7 +32,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.ui.draw.shadow
+import com.safiislam.nexvault.domain.model.DriveFolder
+import com.safiislam.nexvault.presentation.components.FolderGridItem
+import com.safiislam.nexvault.presentation.components.RenameDialog
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
@@ -213,10 +219,39 @@ fun HomeScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     CollectSnackbarMessages(viewModel.messages, snackbarHostState)
+    var showCreateFolder by remember { mutableStateOf(false) }
+
+    if (showCreateFolder) {
+        RenameDialog(
+            title = "Create Smart Folder",
+            initialValue = "",
+            confirmLabel = "Create",
+            onConfirm = { name ->
+                showCreateFolder = false
+                viewModel.createFolder(name)
+            },
+            onDismiss = { showCreateFolder = false }
+        )
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { BottomBarSnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            Box(
+                modifier = Modifier
+                    .padding(bottom = LocalBottomBarInset.current + 8.dp)
+                    .size(56.dp)
+                    .shadow(16.dp, CircleShape, ambientColor = Color(0xFF7C5CFC), spotColor = Color(0xFF9D4EDD))
+                    .clip(CircleShape)
+                    .background(Color(0xFF121216))
+                    .border(1.5.dp, Color(0xFF9D4EDD).copy(alpha = 0.5f), CircleShape)
+                    .clickable { showCreateFolder = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "Create folder", tint = Color.White, modifier = Modifier.size(28.dp))
+            }
+        },
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(Res.string.app_name)) },
@@ -314,6 +349,104 @@ fun HomeScreen(
                     backedUpPercent = if (state.totalFiles <= 0) 100 else (state.backedUpCount * 100 / state.totalFiles).coerceIn(0, 100),
                     slices = state.storage
                 )
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF1E1E24) else Color.White)
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                        .clickable { onOpenTransfers() }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF121216)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowUpward,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        text = "Unlimited storage",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color.White else Color(0xFF1A1A1A),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF7C5CFC), Color(0xFFFF6584))
+                                )
+                            )
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Cloud",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Folders",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            item {
+                val foldersToShow = if (state.favoriteFolders.isNotEmpty()) {
+                    state.favoriteFolders.take(4)
+                } else {
+                    listOf(
+                        DriveFolder("research", "Research", 0, 78, 0, null, 0, false, false, false, 0),
+                        DriveFolder("homework", "Home Work", 0, 154, 0, null, 0, false, false, false, 0),
+                        DriveFolder("guidelines", "Guidelines", 0, 52, 0, null, 0, false, false, false, 0),
+                        DriveFolder("freelance", "Freelance", 0, 259, 0, null, 0, false, false, false, 0)
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    foldersToShow.chunked(2).forEach { rowFolders ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            rowFolders.forEach { folder ->
+                                FolderGridItem(
+                                    folder = folder,
+                                    onClick = { onOpenFolder(folder.id) },
+                                    onLongClick = { onOpenFolder(folder.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (rowFolders.size == 1) {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
             }
             if (state.missingPermissions.isNotEmpty()) {
                 item {
@@ -1001,34 +1134,46 @@ private fun HeroStorageCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFFFF79CD)),
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Filled.Folder,
+                    Icons.Filled.Cloud,
                     contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(34.dp)
-                )
-                Icon(
-                    Icons.Filled.Star,
-                    contentDescription = null,
-                    tint = Color(0xFFFFD166),
-                    modifier = Modifier
-                        .size(14.dp)
-                        .padding(top = 4.dp)
+                    tint = Color(0xFF7C5CFC),
+                    modifier = Modifier.size(32.dp)
                 )
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(name, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "$totalFiles files",
-                    color = Color.White.copy(alpha = 0.8f),
-                    style = MaterialTheme.typography.bodyMedium
+                    text = "Cloud Storages",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "$totalFiles Files",
+                        color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF38D39F))
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "Sync active",
+                        color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
             Text(
                 "$backedUpPercent% safe",
@@ -1042,12 +1187,11 @@ private fun HeroStorageCard(
         }
         Spacer(Modifier.height(22.dp))
         Text(
-            Formatters.bytes(totalBytes),
+            "${Formatters.bytes(totalBytes)} of 2 TB used",
             color = Color.White,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
         )
-        Text("stored in Telegram", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(14.dp))
         androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(18.dp)) {
             val fraction = (backedUpPercent / 100f).coerceIn(0.02f, 1f)

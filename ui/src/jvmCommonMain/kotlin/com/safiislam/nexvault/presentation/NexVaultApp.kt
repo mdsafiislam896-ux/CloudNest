@@ -479,48 +479,39 @@ private fun IosGlassNavigationBar(
 ) {
     val entries = TopLevelDestination.entries
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val position by animateFloatAsState(
-        targetValue = selectedIndex.toFloat(),
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
-        label = "iosTabPosition"
-    )
-    val shape = RoundedCornerShape(36.dp)
-    val glass = if (dark) Color(0xFF1C1C1E).copy(alpha = 0.42f) else Color.White.copy(alpha = 0.46f)
+    val shape = RoundedCornerShape(32.dp)
+    val glass = if (dark) Color(0xFF0F0F12).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.90f)
     val rim = Brush.verticalGradient(
         listOf(
-            Color.White.copy(alpha = if (dark) 0.30f else 0.95f),
-            Color.White.copy(alpha = if (dark) 0.06f else 0.30f)
+            Color.White.copy(alpha = if (dark) 0.18f else 0.85f),
+            Color.White.copy(alpha = if (dark) 0.04f else 0.25f)
         )
     )
     Box(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 22.dp, vertical = 10.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
             .fillMaxWidth()
             .shadow(
-                elevation = 24.dp,
+                elevation = 20.dp,
                 shape = shape,
-                ambientColor = Color.Black.copy(alpha = 0.25f),
-                spotColor = Color.Black.copy(alpha = 0.25f)
+                ambientColor = Color.Black.copy(alpha = 0.35f),
+                spotColor = Color.Black.copy(alpha = 0.35f)
             )
-            .glassEffect(shape, glass)
+            .clip(shape)
+            .background(glass)
             .border(1.dp, rim, shape)
-            .height(68.dp)
+            .height(64.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(1f / entries.size)
-                .padding(6.dp)
-                .graphicsLayer { translationX = position * size.width }
-                .clip(RoundedCornerShape(30.dp))
-                .background(if (dark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.07f))
-        )
-        Row(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             entries.forEachIndexed { index, destination ->
                 IosTabItem(
                     destination = destination,
                     selected = index == selectedIndex,
+                    dark = dark,
                     onClick = { if (index != selectedIndex) onNavigate(destination) },
                     modifier = Modifier.weight(1f).fillMaxHeight()
                 )
@@ -533,21 +524,23 @@ private fun IosGlassNavigationBar(
 private fun IosTabItem(
     destination: TopLevelDestination,
     selected: Boolean,
+    dark: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalHapticFeedback.current
+    val accentColor = Color(0xFF9D4EDD)
     val tint by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (selected) accentColor else if (dark) Color(0xFF8E8E93) else Color(0xFF6C6C70),
         animationSpec = tween(180),
         label = "iosTabTint"
     )
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.08f else 1f,
+        targetValue = if (selected) 1.05f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
         label = "iosTabScale"
     )
-    Column(
+    Box(
         modifier = modifier
             .pressScale(0.92f)
             .selectable(
@@ -560,24 +553,59 @@ private fun IosTabItem(
                     onClick()
                 }
             ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = if (selected) destination.selectedIcon else destination.icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier
-                .size(24.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = stringResource(destination.labelRes),
-            style = MaterialTheme.typography.labelSmall,
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                accentColor.copy(alpha = if (dark) 0.30f else 0.16f),
+                                Color(0xFF7C5CFC).copy(alpha = if (dark) 0.18f else 0.08f)
+                            )
+                        )
+                    )
+                    .border(
+                        1.dp,
+                        Brush.verticalGradient(
+                            listOf(
+                                accentColor.copy(alpha = 0.65f),
+                                Color(0xFF7C5CFC).copy(alpha = 0.20f)
+                            )
+                        ),
+                        RoundedCornerShape(20.dp)
+                    )
+            )
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = if (selected) destination.selectedIcon else destination.icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier
+                    .size(24.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stringResource(destination.labelRes),
+                style = MaterialTheme.typography.labelSmall,
+                color = tint,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
+        }
+    }
+}
             color = tint,
             maxLines = 1
         )
