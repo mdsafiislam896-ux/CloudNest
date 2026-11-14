@@ -301,7 +301,7 @@ fun HomeScreen(
                                     onOpenFile(
                                         file.id,
                                         PreviewSequence(
-                                            categories = setOf(selectedCategory),
+                                            categories = listOf(selectedCategory),
                                             sortField = FileSortField.DATE_MODIFIED,
                                             sortDirection = SortDirection.DESCENDING
                                         )
