@@ -199,6 +199,15 @@ class HomeViewModel(
         }
     }
 
+    fun observeFilesByCategory(category: com.safiislam.nexvault.domain.model.FileCategory): Flow<List<com.safiislam.nexvault.domain.model.DriveFile>> =
+        fileRepository.observeFiles(
+            com.safiislam.nexvault.domain.model.FileQuerySpec(
+                categories = listOf(category),
+                sortField = com.safiislam.nexvault.domain.model.FileSortField.DATE_MODIFIED,
+                sortDirection = com.safiislam.nexvault.domain.model.SortDirection.DESCENDING
+            )
+        )
+
     /** A folder scan never reaches files added by hand, or canceled or failed on their way up. */
     fun backUpPending() {
         if (_scanning.value) return

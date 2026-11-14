@@ -14,7 +14,7 @@ data class FilesUiState(
     val folders: List<DriveFolder> = emptyList(),
     val selection: Set<String> = emptySet(),
     val folderSelection: Set<String> = emptySet(),
-    val viewMode: ViewMode = ViewMode.GRID,
+    val viewMode: ViewMode = ViewMode.LIST,
     val gridSize: Int = 3,
     val sortField: FileSortField = FileSortField.NAME,
     val sortDirection: SortDirection = SortDirection.ASCENDING,

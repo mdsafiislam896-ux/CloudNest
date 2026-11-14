@@ -1,7 +1,9 @@
 package com.safiislam.nexvault.presentation.note
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,13 +15,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.StrikethroughS
 import androidx.compose.material.icons.filled.Title
+import androidx.compose.material.icons.filled.Visibility
+import com.safiislam.nexvault.presentation.common.MarkdownText
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButton
@@ -79,6 +85,12 @@ fun NoteEditorScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var body by remember(state.loading) { mutableStateOf(TextFieldValue(state.body)) }
+    var previewMode by remember { mutableStateOf(false) }
+
+    val wordCount = remember(body.text) {
+        if (body.text.isBlank()) 0 else body.text.trim().split(Regex("\\s+")).size
+    }
+    val charCount = body.text.length
 
     val linkText = stringResource(Res.string.note_link_text)
     val linkUrl = stringResource(Res.string.note_link_url)
@@ -92,17 +104,32 @@ fun NoteEditorScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        stringResource(
-                            if (state.isNew) Res.string.note_new else Res.string.note_edit
+                    Column {
+                        Text(
+                            stringResource(
+                                if (state.isNew) Res.string.note_new else Res.string.note_edit
+                            )
                         )
-                    )
+                        Text(
+                            text = "$wordCount words • $charCount chars",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(Res.string.common_back)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { previewMode = !previewMode }) {
+                        Icon(
+                            imageVector = if (previewMode) Icons.Filled.Edit else Icons.Filled.Visibility,
+                            contentDescription = if (previewMode) "Edit Markdown" else "Preview Markdown"
                         )
                     }
                 }
@@ -165,20 +192,37 @@ fun NoteEditorScreen(
                 }
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            TextField(
-                value = body,
-                onValueChange = {
-                    body = it
-                    viewModel.setBody(it.text)
-                },
-                placeholder = { Text(stringResource(Res.string.note_body_hint)) },
-                enabled = !state.saving,
-                colors = borderlessColors(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(bottom = SAVE_BUTTON_CLEARANCE)
-            )
+            if (previewMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(bottom = SAVE_BUTTON_CLEARANCE)
+                ) {
+                    MarkdownText(
+                        text = body.text.ifBlank { "_Nothing to preview yet_" },
+                        textScale = 1f,
+                        onOpenUrl = {}
+                    )
+                }
+            } else {
+                TextField(
+                    value = body,
+                    onValueChange = {
+                        body = it
+                        viewModel.setBody(it.text)
+                    },
+                    placeholder = { Text(stringResource(Res.string.note_body_hint)) },
+                    enabled = !state.saving,
+                    colors = borderlessColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(bottom = SAVE_BUTTON_CLEARANCE)
+                )
+            }
         }
     }
 }
@@ -217,6 +261,13 @@ private fun MarkdownToolbar(enabled: Boolean, onAction: (MarkdownAction) -> Unit
             enabled
         ) {
             onAction(MarkdownAction.LinePrefix("- "))
+        }
+        ToolbarButton(
+            Icons.Filled.CheckBox,
+            Res.string.note_bullet,
+            enabled
+        ) {
+            onAction(MarkdownAction.LinePrefix("- [ ] "))
         }
         ToolbarButton(Icons.Filled.FormatQuote, Res.string.note_quote, enabled) {
             onAction(MarkdownAction.LinePrefix("> "))

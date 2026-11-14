@@ -932,6 +932,7 @@ fun FilesScreen(
             thumbnailContent = {
                 FileThumbnail(
                     file = file,
+                    cleanFileMode = true,
                     contentDescription = null,
                     modifier = androidx.compose.ui.Modifier
                         .size(56.dp)
@@ -998,6 +999,60 @@ fun FilesScreen(
             onDismiss = {
                 confirmTrashContextItem = false
                 viewModel.clearSelection()
+            }
+        )
+    }
+
+    contextSheetFolder?.let { folder ->
+        FileContextSheet(
+            visible = true,
+            onDismiss = { contextSheetFolder = null },
+            title = folder.name,
+            subtitle = "Folder",
+            thumbnailContent = {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFFFB800).copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.FolderOpen,
+                        contentDescription = null,
+                        tint = Color(0xFFFFB800),
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+            },
+            actions = buildList {
+                add(FileContextAction(Icons.Filled.Star, if (folder.isFavorite) "Remove Favorite" else "Add to Favorites") {
+                    contextSheetFolder = null
+                    viewModel.toggleFolderSelection(folder.id)
+                    viewModel.favoriteSelected(!folder.isFavorite)
+                    viewModel.clearSelection()
+                })
+                add(FileContextAction(Icons.Filled.DriveFileRenameOutline, "Rename") {
+                    contextSheetFolder = null
+                    viewModel.toggleFolderSelection(folder.id)
+                    viewModel.requestRenameSelected()
+                })
+                add(FileContextAction(Icons.AutoMirrored.Filled.DriveFileMove, "Move") {
+                    contextSheetFolder = null
+                    viewModel.toggleFolderSelection(folder.id)
+                    showMovePicker = true
+                })
+                add(FileContextAction(Icons.Outlined.Info, "Details") {
+                    contextSheetFolder = null
+                    viewModel.toggleFolderSelection(folder.id)
+                    viewModel.showInfoForSelection()
+                    viewModel.clearSelection()
+                })
+                add(FileContextAction(Icons.Filled.DeleteOutline, "Delete", destructive = true) {
+                    contextSheetFolder = null
+                    viewModel.toggleFolderSelection(folder.id)
+                    confirmTrashContextItem = true
+                })
             }
         )
     }
@@ -1108,7 +1163,8 @@ private fun FilesContent(
     onFolderMenuClick: ((DriveFolder) -> Unit)? = null,
     onFileMenuClick: ((DriveFile) -> Unit)? = null
 ) {
-    val columns = if (state.viewMode == ViewMode.GRID) state.gridSize else 1
+    // Pure File Manager List in Files Tab (1 column list of FolderRow & FileListItem)
+    val columns = 1
     val dragSelect = rememberDragSelect(
         gridState = gridState,
         onStart = viewModel::startRangeSelection,
@@ -1134,48 +1190,31 @@ private fun FilesContent(
         columns = GridCells.Fixed(columns),
         modifier = Modifier
             .fillMaxSize()
-            .pinchZoom(onZoomIn = viewModel::zoomIn, onZoomOut = viewModel::zoomOut)
             .then(dragSelect),
         contentPadding = padding.add(horizontal = 12.dp, top = 12.dp, bottom = 100.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(
             count = state.folders.size,
             key = { "folder-${state.folders[it].id}" },
-            span = {
-                if (state.viewMode == ViewMode.GRID) GridItemSpan(1)
-                else GridItemSpan(maxLineSpan)
-            }
+            span = { GridItemSpan(maxLineSpan) }
         ) { index ->
             val folder = state.folders[index]
             val folderSelected = folder.id in state.folderSelection
-            if (state.viewMode == ViewMode.GRID) {
-                FolderGridItem(
-                    folder = folder,
-                    selected = folderSelected,
-                    onClick = {
-                        if (state.selectionMode) viewModel.toggleFolderSelection(folder.id)
-                        else onOpenFolder(folder.id)
-                    },
-                    onLongClick = { viewModel.toggleFolderSelection(folder.id) },
-                    modifier = Modifier.animateItem()
-                )
-            } else {
-                FolderRow(
-                    folder = folder,
-                    selected = folderSelected,
-                    onClick = {
-                        if (state.selectionMode) viewModel.toggleFolderSelection(folder.id)
-                        else onOpenFolder(folder.id)
-                    },
-                    onLongClick = { viewModel.toggleFolderSelection(folder.id) },
-                    onMenuClick = if (!state.selectionMode) {
-                        { onFolderMenuClick?.invoke(folder) }
-                    } else null,
-                    modifier = Modifier.animateItem()
-                )
-            }
+            FolderRow(
+                folder = folder,
+                selected = folderSelected,
+                onClick = {
+                    if (state.selectionMode) viewModel.toggleFolderSelection(folder.id)
+                    else onOpenFolder(folder.id)
+                },
+                onLongClick = { viewModel.toggleFolderSelection(folder.id) },
+                onMenuClick = if (!state.selectionMode) {
+                    { onFolderMenuClick?.invoke(folder) }
+                } else null,
+                modifier = Modifier.animateItem()
+            )
         }
 
         items(
@@ -1185,49 +1224,28 @@ private fun FilesContent(
             val file = files[index] ?: return@items
             val selected = file.id in state.selection
             val highlighted = file.id == highlightedFileId
-            if (state.viewMode == ViewMode.GRID) {
-                FileGridItem(
-                    file = file,
-                    selected = selected,
-                    onClick = {
-                        if (state.selectionMode) viewModel.toggleSelection(file.id)
-                        else onOpenFile(
-                            file.id,
-                            PreviewSequence(
-                                folderId = state.folderId,
-                                filterByFolder = true,
-                                sortField = state.sortField,
-                                sortDirection = state.sortDirection
-                            )
+            FileListItem(
+                file = file,
+                selected = selected,
+                selectionMode = state.selectionMode,
+                onClick = {
+                    if (state.selectionMode) viewModel.toggleSelection(file.id)
+                    else onOpenFile(
+                        file.id,
+                        PreviewSequence(
+                            folderId = state.folderId,
+                            filterByFolder = true,
+                            sortField = state.sortField,
+                            sortDirection = state.sortDirection
                         )
-                    },
-                    onLongClick = { viewModel.toggleSelection(file.id) },
-                    modifier = Modifier.animateItem().focusHighlight(highlighted)
-                )
-            } else {
-                FileListItem(
-                    file = file,
-                    selected = selected,
-                    selectionMode = state.selectionMode,
-                    onClick = {
-                        if (state.selectionMode) viewModel.toggleSelection(file.id)
-                        else onOpenFile(
-                            file.id,
-                            PreviewSequence(
-                                folderId = state.folderId,
-                                filterByFolder = true,
-                                sortField = state.sortField,
-                                sortDirection = state.sortDirection
-                            )
-                        )
-                    },
-                    onLongClick = { viewModel.toggleSelection(file.id) },
-                    onMenuClick = if (!state.selectionMode) {
-                        { onFileMenuClick?.invoke(file) }
-                    } else null,
-                    modifier = Modifier.animateItem().focusHighlight(highlighted)
-                )
-            }
+                    )
+                },
+                onLongClick = { viewModel.toggleSelection(file.id) },
+                onMenuClick = if (!state.selectionMode) {
+                    { onFileMenuClick?.invoke(file) }
+                } else null,
+                modifier = Modifier.animateItem().focusHighlight(highlighted)
+            )
         }
     }
 }

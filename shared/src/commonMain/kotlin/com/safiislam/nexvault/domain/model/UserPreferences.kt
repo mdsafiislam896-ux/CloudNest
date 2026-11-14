@@ -32,7 +32,7 @@ data class UserPreferences(
     val designStyle: DesignStyle = DesignStyle.COLORFUL,
     val autoSortByType: Boolean = false,
     val autoReplicate: Boolean = false,
-    val viewMode: ViewMode = ViewMode.GRID,
+    val viewMode: ViewMode = ViewMode.LIST,
     val gridSize: Int = 3,
     val galleryViewMode: ViewMode = ViewMode.GRID,
     val galleryGridSize: Int = 3,

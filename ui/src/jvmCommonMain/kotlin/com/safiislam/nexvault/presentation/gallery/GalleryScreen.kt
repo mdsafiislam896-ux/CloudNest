@@ -139,17 +139,25 @@ import com.safiislam.nexvault.presentation.common.rememberPosition
 
 @Composable
 private fun DayHeaderRow(dayStartMillis: Long, modifier: Modifier = Modifier) {
-    Text(
-        text = when (val bucket = Formatters.dayBucket(dayStartMillis)) {
-            DayBucket.Today -> stringResource(Res.string.date_today)
-            DayBucket.Yesterday -> stringResource(Res.string.date_yesterday)
-            is DayBucket.DaysAgo -> stringResource(Res.string.date_days_ago, bucket.days)
-            is DayBucket.Absolute -> bucket.text
-        },
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 4.dp, top = 12.dp, bottom = 4.dp)
-    )
+    val label = when (val bucket = Formatters.dayBucket(dayStartMillis)) {
+        DayBucket.Today -> "📅 " + stringResource(Res.string.date_today)
+        DayBucket.Yesterday -> "🗓️ " + stringResource(Res.string.date_yesterday)
+        is DayBucket.DaysAgo -> stringResource(Res.string.date_days_ago, bucket.days)
+        is DayBucket.Absolute -> bucket.text
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 6.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

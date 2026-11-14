@@ -125,6 +125,12 @@ fun PlayerControls(
     onInteraction: () -> Unit,
     onLock: () -> Unit = {},
     onEnterPip: (() -> Unit)? = null,
+    audioBoostFactor: Float = 1f,
+    onAudioBoostChange: (Float) -> Unit = {},
+    subtitleScaleFactor: Float = 1f,
+    onSubtitleScaleChange: (Float) -> Unit = {},
+    videoZoom: Float = 1f,
+    onVideoZoomChange: (Float) -> Unit = {},
     onPreferredAudioLanguage: (String) -> Unit = {},
     onPreferredSubtitleLanguage: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -491,6 +497,86 @@ fun PlayerControls(
                         Text("Repeat One", style = MaterialTheme.typography.bodyLarge)
                     }
                     Text(if (repeatOne) "On" else "Off", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val nextBoost = when {
+                                audioBoostFactor < 1.25f -> 1.5f
+                                audioBoostFactor < 1.75f -> 2.0f
+                                else -> 1.0f
+                            }
+                            onAudioBoostChange(nextBoost)
+                        }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text("Audio Boost (up to 200%)", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(
+                        text = "${(audioBoostFactor * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (audioBoostFactor > 1.01f) Color(0xFFFF9800) else MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (!audioOnly) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val nextScale = when {
+                                    subtitleScaleFactor < 0.9f -> 1.0f
+                                    subtitleScaleFactor < 1.2f -> 1.35f
+                                    subtitleScaleFactor < 1.5f -> 1.7f
+                                    else -> 0.75f
+                                }
+                                onSubtitleScaleChange(nextScale)
+                            }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Subtitles, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Text("Subtitle Font Size", style = MaterialTheme.typography.bodyLarge)
+                        }
+                        val sizeLabel = when {
+                            subtitleScaleFactor < 0.9f -> "Small"
+                            subtitleScaleFactor < 1.2f -> "Normal"
+                            subtitleScaleFactor < 1.5f -> "Large"
+                            else -> "Extra Large"
+                        }
+                        Text(sizeLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val nextZoom = when {
+                                    videoZoom < 1.2f -> 1.5f
+                                    videoZoom < 1.8f -> 2.0f
+                                    videoZoom < 2.8f -> 3.0f
+                                    else -> 1.0f
+                                }
+                                onVideoZoomChange(nextZoom)
+                            }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(resizeMode.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Text("Canvas Zoom (1x - 3x)", style = MaterialTheme.typography.bodyLarge)
+                        }
+                        Text("${(videoZoom * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }

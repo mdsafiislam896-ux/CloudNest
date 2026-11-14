@@ -1,6 +1,7 @@
 package com.safiislam.nexvault.presentation.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,7 +33,11 @@ import com.safiislam.nexvault.presentation.components.pressScale
 
 /** Four colourful stat tiles (photos, videos, audio, documents) with the share of storage each uses. */
 @Composable
-internal fun CategoryTiles(slices: List<StorageSlice>, modifier: Modifier = Modifier) {
+internal fun CategoryTiles(
+    slices: List<StorageSlice>,
+    onCategoryClick: (FileCategory) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val total = slices.sumOf { it.totalBytes }
     if (total <= 0L) return
     val tiles = listOf(
@@ -52,6 +57,7 @@ internal fun CategoryTiles(slices: List<StorageSlice>, modifier: Modifier = Modi
                 percent = percent,
                 count = slice?.fileCount ?: 0,
                 colors = colors,
+                onClick = { onCategoryClick(category) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -65,6 +71,7 @@ private fun CategoryTile(
     percent: Int,
     count: Int,
     colors: List<Color>,
+    onClick: () -> Unit,
     modifier: Modifier
 ) {
     Column(
@@ -72,6 +79,7 @@ private fun CategoryTile(
             .pressScale(0.96f)
             .clip(RoundedCornerShape(22.dp))
             .background(Brush.linearGradient(colors))
+            .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 14.dp)
     ) {
         Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.95f))

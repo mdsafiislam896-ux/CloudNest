@@ -45,7 +45,8 @@ fun FileGridItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    cleanFileMode: Boolean = false
 ) {
     Column(
         modifier = modifier
@@ -63,7 +64,7 @@ fun FileGridItem(
         Box {
             FileThumbnail(
                 file = file,
-                cleanFileMode = true,
+                cleanFileMode = cleanFileMode,
                 contentDescription = if (compact) file.name else null,
                 modifier = Modifier
                     .fillMaxWidth()

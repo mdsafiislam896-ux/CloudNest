@@ -4,6 +4,7 @@ import androidx.compose.material3.Button
 import com.safiislam.nexvault.resources.common_retry
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.util.Rational
 import android.view.WindowManager
@@ -15,8 +16,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.media3.ui.SubtitleView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,8 +48,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.safiislam.nexvault.presentation.common.Formatters
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -156,13 +169,40 @@ fun MediaPlayer(
 
                 else -> Unit
             }
+            val savedPosition = SmartResumePositions[fileId] ?: 0L
+            if (savedPosition > 5_000L) {
+                seekTo(savedPosition)
+            }
             prepare()
             playWhenReady = true
         }
     }
 
-    DisposableEffect(holder) {
-        onDispose { holder.value?.release() }
+    var resumeBannerText by remember(fileId) {
+        val saved = SmartResumePositions[fileId] ?: 0L
+        mutableStateOf(
+            if (saved > 5_000L) "▶️ Resumed from ${Formatters.duration(saved)}" else null
+        )
+    }
+    LaunchedEffect(resumeBannerText) {
+        if (resumeBannerText == null) return@LaunchedEffect
+        delay(2_800.milliseconds)
+        resumeBannerText = null
+    }
+
+    DisposableEffect(holder, fileId) {
+        onDispose {
+            holder.value?.let { exo ->
+                val pos = exo.currentPosition
+                val dur = exo.duration
+                if (pos > 5_000L && (dur <= 0L || pos < dur - 4_000L)) {
+                    SmartResumePositions[fileId] = pos
+                } else if (dur > 0L && pos >= dur - 4_000L) {
+                    SmartResumePositions.remove(fileId)
+                }
+                exo.release()
+            }
+        }
     }
 
     DisposableEffect(player, isActivePage) {
@@ -193,6 +233,10 @@ fun MediaPlayer(
     var lockHintVisible by remember(content) { mutableStateOf(false) }
     val visibleControls by rememberUpdatedState(controlsVisible)
     var resizeMode by remember { mutableStateOf(PlayerResizeMode.FIT) }
+    var videoZoom by remember(content) { mutableFloatStateOf(1f) }
+    var videoPan by remember(content) { mutableStateOf(Offset.Zero) }
+    var audioBoostFactor by remember(content) { mutableFloatStateOf(1f) }
+    var subtitleScaleFactor by remember { mutableFloatStateOf(1f) }
     var playing by remember(player) { mutableStateOf(player?.isPlaying == true) }
     var sized by remember(player) { mutableStateOf((player?.videoSize?.width ?: 0) > 0) }
     var videoRatio by remember(player) {
@@ -200,6 +244,34 @@ fun MediaPlayer(
     }
     var decoderFailed by remember(player) { mutableStateOf(false) }
     var playbackFailed by remember(player) { mutableStateOf(false) }
+
+    val loudnessEnhancer = remember(player) { mutableStateOf<LoudnessEnhancer?>(null) }
+    DisposableEffect(player, audioBoostFactor) {
+        if (player == null) return@DisposableEffect onDispose { }
+        runCatching {
+            val sessionId = player.audioSessionId
+            if (sessionId != C.AUDIO_SESSION_ID_UNSET && sessionId != 0) {
+                val enhancer = loudnessEnhancer.value ?: LoudnessEnhancer(sessionId).also {
+                    loudnessEnhancer.value = it
+                }
+                if (audioBoostFactor > 1.01f) {
+                    val gainMb = ((audioBoostFactor - 1f) * 1500f).roundToInt().coerceIn(0, 1500)
+                    enhancer.setTargetGain(gainMb)
+                    enhancer.enabled = true
+                } else {
+                    enhancer.setTargetGain(0)
+                    enhancer.enabled = false
+                }
+            }
+        }
+        onDispose { }
+    }
+    DisposableEffect(player) {
+        onDispose {
+            runCatching { loudnessEnhancer.value?.release() }
+            loudnessEnhancer.value = null
+        }
+    }
 
     DisposableEffect(player) {
         if (player == null) return@DisposableEffect onDispose { }
@@ -307,8 +379,18 @@ fun MediaPlayer(
                         PlayerResizeMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         PlayerResizeMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                     }
+                    view.subtitleView?.setFractionalTextSize(
+                        SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitleScaleFactor
+                    )
                 },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = videoZoom
+                        scaleY = videoZoom
+                        translationX = videoPan.x
+                        translationY = videoPan.y
+                    }
             )
         }
         if (!audioOnly && !sized) {
@@ -388,8 +470,66 @@ fun MediaPlayer(
                         interactionTick++
                     }
                 },
+                currentPositionProvider = { player?.currentPosition?.coerceAtLeast(0L) ?: 0L },
+                durationProvider = { player?.duration?.coerceAtLeast(1L) ?: 1L },
+                onSeekTo = { targetMs ->
+                    player?.seekTo(targetMs)
+                    interactionTick++
+                },
+                audioBoostFactor = audioBoostFactor,
+                onAudioBoostChange = { audioBoostFactor = it },
                 modifier = Modifier.matchParentSize()
             )
+        }
+        AnimatedVisibility(
+            visible = resumeBannerText != null && !inPipMode,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 80.dp)
+        ) {
+            resumeBannerText?.let { banner ->
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = ComposeColor(0xFF1A1A22).copy(alpha = 0.9f),
+                    contentColor = ComposeColor.White
+                ) {
+                    Text(
+                        text = banner,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = videoZoom > 1.02f && !inPipMode,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 128.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = ComposeColor.Black.copy(alpha = 0.78f),
+                contentColor = ComposeColor.White,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable {
+                        videoZoom = 1f
+                        videoPan = Offset.Zero
+                    }
+            ) {
+                Text(
+                    text = "🔍 ${(videoZoom * 100).roundToInt()}% • Tap to Reset",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
         }
         if (player != null) {
             PlayerControls(
@@ -410,6 +550,15 @@ fun MediaPlayer(
                     locked = true
                     lockHintVisible = true
                     notifyControls(false)
+                },
+                audioBoostFactor = audioBoostFactor,
+                onAudioBoostChange = { audioBoostFactor = it },
+                subtitleScaleFactor = subtitleScaleFactor,
+                onSubtitleScaleChange = { subtitleScaleFactor = it },
+                videoZoom = videoZoom,
+                onVideoZoomChange = {
+                    videoZoom = it
+                    if (it <= 1.01f) videoPan = Offset.Zero
                 },
                 onPreferredAudioLanguage = onPreferredAudioLanguage,
                 onPreferredSubtitleLanguage = onPreferredSubtitleLanguage
@@ -554,6 +703,8 @@ private const val LIGHT_LUMINANCE = 0.5f
 private val AUDIO_ICON_SIZE = 96.dp
 
 private val ARTWORK_SIZE = 260.dp
+
+private val SmartResumePositions = ConcurrentHashMap<String, Long>()
 
 @OptIn(UnstableApi::class)
 private fun PlaybackException.failedDecoderName(): String? =

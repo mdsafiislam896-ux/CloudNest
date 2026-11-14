@@ -9,34 +9,69 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalUriHandler
@@ -101,9 +136,34 @@ fun PdfPreview(path: String, modifier: Modifier = Modifier) {
         return
     }
 
+    var nightMode by rememberSaveable(path) { mutableStateOf(false) }
+    val bookmarks = remember(path) { mutableStateListOf<Int>() }
+    var showJumpDialog by remember { mutableStateOf(false) }
+    val totalPages = renderer.pageCount.coerceAtLeast(1)
+    val currentPage by remember(listState, totalPages) {
+        derivedStateOf { (listState.firstVisibleItemIndex + 1).coerceIn(1, totalPages) }
+    }
+    val isBookmarked = (currentPage - 1) in bookmarks
+
+    val nightColorFilter = remember(nightMode) {
+        if (nightMode) {
+            ColorFilter.colorMatrix(
+                ColorMatrix(
+                    floatArrayOf(
+                        -0.88f, 0f, 0f, 0f, 240f,
+                        0f, -0.88f, 0f, 0f, 240f,
+                        0f, 0f, -0.85f, 0f, 245f,
+                        0f, 0f, 0f, 1f, 0f
+                    )
+                )
+            )
+        } else null
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
+            .background(if (nightMode) ComposeColor(0xFF121216) else MaterialTheme.colorScheme.surfaceContainerLowest)
             .onSizeChanged { viewport = it }
             .pointerInput(path) {
                 detectTapGestures(
@@ -156,7 +216,7 @@ fun PdfPreview(path: String, modifier: Modifier = Modifier) {
                 },
             contentPadding = WindowInsets.systemBars
                 .asPaddingValues()
-                .add(top = PreviewTopBarHeight + 8.dp, bottom = 8.dp),
+                .add(top = PreviewTopBarHeight + 8.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(count = renderer.pageCount, key = { it }) { pageIndex ->
@@ -164,12 +224,126 @@ fun PdfPreview(path: String, modifier: Modifier = Modifier) {
                     renderer = renderer,
                     renderMutex = renderMutex,
                     pageIndex = pageIndex,
+                    colorFilter = nightColorFilter,
                     onJumpToPage = { target ->
                         scope.launch { listState.animateScrollToItem(target) }
                     }
                 )
             }
         }
+
+        // ── Floating PDF Reader Controls Bar (Page Counter, Jump, Night Mode, Bookmarks) ──
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = ComposeColor(0xFF1A1A22).copy(alpha = 0.92f),
+            contentColor = ComposeColor.White,
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(ComposeColor.White.copy(alpha = 0.12f))
+                        .clickable { showJumpDialog = true }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "📄 Page $currentPage of $totalPages",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = ComposeColor.White
+                    )
+                }
+
+                IconButton(
+                    onClick = { nightMode = !nightMode },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = if (nightMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                        contentDescription = if (nightMode) "Day Mode" else "Night Mode",
+                        tint = if (nightMode) ComposeColor(0xFFFFD54F) else ComposeColor.White
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        val idx = currentPage - 1
+                        if (idx in bookmarks) bookmarks.remove(idx) else bookmarks.add(idx)
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                        contentDescription = "Bookmark page",
+                        tint = if (isBookmarked) ComposeColor(0xFF7C5CFC) else ComposeColor.White
+                    )
+                }
+            }
+        }
+    }
+
+    if (showJumpDialog) {
+        var sliderPage by remember(currentPage) { mutableFloatStateOf(currentPage.toFloat()) }
+        AlertDialog(
+            onDismissRequest = { showJumpDialog = false },
+            title = { Text("Jump to Page (${sliderPage.toInt()} / $totalPages)") },
+            text = {
+                Column {
+                    Slider(
+                        value = sliderPage,
+                        onValueChange = { sliderPage = it },
+                        valueRange = 1f..totalPages.coerceAtLeast(1).toFloat()
+                    )
+                    if (bookmarks.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Bookmarked Pages:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(bookmarks.sorted()) { bm ->
+                                FilterChip(
+                                    selected = (bm + 1) == sliderPage.toInt(),
+                                    onClick = {
+                                        sliderPage = (bm + 1).toFloat()
+                                        showJumpDialog = false
+                                        scope.launch { listState.scrollToItem(bm) }
+                                    },
+                                    label = { Text("🔖 p.${bm + 1}") }
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showJumpDialog = false
+                        val targetIdx = (sliderPage.toInt() - 1).coerceIn(0, totalPages - 1)
+                        scope.launch { listState.scrollToItem(targetIdx) }
+                    }
+                ) {
+                    Text("Go to Page ${sliderPage.toInt()}")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showJumpDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
@@ -178,6 +352,7 @@ private fun PdfPage(
     renderer: PdfRenderer,
     renderMutex: Mutex,
     pageIndex: Int,
+    colorFilter: ColorFilter? = null,
     onJumpToPage: (Int) -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
@@ -219,6 +394,7 @@ private fun PdfPage(
         Image(
             bitmap = page.bitmap.asImageBitmap(),
             contentDescription = stringResource(Res.string.preview_page_number, pageIndex + 1),
+            colorFilter = colorFilter,
             modifier = Modifier.fillMaxSize()
         )
         page.links.forEach { link ->

@@ -8,6 +8,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -46,18 +48,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.safiislam.nexvault.presentation.common.Formatters
 import com.safiislam.nexvault.resources.Res
 import com.safiislam.nexvault.resources.player_brightness
 import com.safiislam.nexvault.resources.player_toggle_controls
 import com.safiislam.nexvault.resources.player_volume
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Left half sets brightness, right half volume; the brightness override lives on the window, so it
- * reverts when the player leaves.
+ * MX Player-grade gesture surface:
+ * - Left vertical swipe: Brightness (0% - 100%)
+ * - Right vertical swipe: Volume + Audio Boost (0% - 200%)
+ * - Horizontal drag: Smooth seek with live time preview
+ * - Double tap left/right: 10s rewind/forward
  */
 @Composable
 fun PlayerGestureArea(
@@ -66,6 +73,11 @@ fun PlayerGestureArea(
     dragEnabled: Boolean,
     chromeVisible: Boolean,
     onDoubleTapSeek: ((Boolean) -> Unit)? = null,
+    currentPositionProvider: () -> Long = { 0L },
+    durationProvider: () -> Long = { 0L },
+    onSeekTo: ((Long) -> Unit)? = null,
+    audioBoostFactor: Float = 1f,
+    onAudioBoostChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -73,6 +85,11 @@ fun PlayerGestureArea(
     val tap by rememberUpdatedState(onTap)
     val adjustStart by rememberUpdatedState(onAdjustStart)
     val doubleTapSeek by rememberUpdatedState(onDoubleTapSeek)
+    val getPos by rememberUpdatedState(currentPositionProvider)
+    val getDur by rememberUpdatedState(durationProvider)
+    val seekTo by rememberUpdatedState(onSeekTo)
+    val boostFactor by rememberUpdatedState(audioBoostFactor)
+    val setBoost by rememberUpdatedState(onAudioBoostChange)
 
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val maxVolume = remember(audioManager) {
@@ -90,6 +107,7 @@ fun PlayerGestureArea(
     }
     var adjustment by remember { mutableStateOf<AdjustmentLevel?>(null) }
     var seekHint by remember { mutableStateOf<String?>(null) }
+    var horizontalSeekActive by remember { mutableStateOf(false) }
 
     var overrodeBrightness by remember(activity) { mutableStateOf(false) }
     DisposableEffect(activity) {
@@ -110,8 +128,8 @@ fun PlayerGestureArea(
         adjustment = null
     }
 
-    LaunchedEffect(seekHint) {
-        if (seekHint == null) return@LaunchedEffect
+    LaunchedEffect(seekHint, horizontalSeekActive) {
+        if (seekHint == null || horizontalSeekActive) return@LaunchedEffect
         delay(650.milliseconds)
         seekHint = null
     }
@@ -139,13 +157,50 @@ fun PlayerGestureArea(
                         }
                     )
                 }
+                .pointerInput(dragEnabled) {
+                    if (!dragEnabled || seekTo == null) return@pointerInput
+                    var startPos = 0L
+                    var totalDur = 0L
+                    var accumulatedDx = 0f
+                    var targetSeekPos = 0L
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            startPos = getPos()
+                            totalDur = getDur().coerceAtLeast(1L)
+                            accumulatedDx = 0f
+                            targetSeekPos = startPos
+                            horizontalSeekActive = true
+                            adjustStart()
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            accumulatedDx += dragAmount
+                            val widthPx = size.width.coerceAtLeast(1).toFloat()
+                            val fullSwipeMs = 90_000L.coerceAtMost(totalDur)
+                            val deltaMs = ((accumulatedDx / widthPx) * fullSwipeMs).toLong()
+                            targetSeekPos = (startPos + deltaMs).coerceIn(0L, totalDur)
+                            val actualDelta = targetSeekPos - startPos
+                            val sign = if (actualDelta >= 0) "⏩ +" else "⏪ -"
+                            seekHint = "$sign${Formatters.duration(abs(actualDelta))}  •  ${Formatters.duration(targetSeekPos)} / ${Formatters.duration(totalDur)}"
+                        },
+                        onDragEnd = {
+                            horizontalSeekActive = false
+                            seekTo?.invoke(targetSeekPos)
+                        },
+                        onDragCancel = {
+                            horizontalSeekActive = false
+                            seekHint = null
+                        }
+                    )
+                }
                 .pointerInput(dragEnabled, maxVolume) {
                     if (!dragEnabled) return@pointerInput
                     var onLeftHalf = false
                     detectVerticalDragGestures(
                         onDragStart = { offset ->
                             onLeftHalf = offset.x < size.width / 2f
-                            volume = currentVolume(audioManager, maxVolume)
+                            val sysVol = currentVolume(audioManager, maxVolume)
+                            volume = if (boostFactor > 1.01f && sysVol >= 0.95f) boostFactor else sysVol
                             adjustStart()
                         },
                         onVerticalDrag = { change, dragAmount ->
@@ -158,12 +213,22 @@ fun PlayerGestureArea(
                                 overrodeBrightness = true
                                 adjustment = AdjustmentLevel(Adjustment.BRIGHTNESS, brightness)
                             } else {
-                                volume = (volume + step).coerceIn(0f, 1f)
-                                audioManager?.setStreamVolume(
-                                    AudioManager.STREAM_MUSIC,
-                                    (volume * maxVolume).roundToInt(),
-                                    0
-                                )
+                                volume = (volume + step).coerceIn(0f, 2f)
+                                if (volume <= 1f) {
+                                    setBoost(1f)
+                                    audioManager?.setStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        (volume * maxVolume).roundToInt(),
+                                        0
+                                    )
+                                } else {
+                                    audioManager?.setStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        maxVolume,
+                                        0
+                                    )
+                                    setBoost(volume)
+                                }
                                 adjustment = AdjustmentLevel(Adjustment.VOLUME, volume)
                             }
                         }
@@ -207,9 +272,10 @@ fun PlayerGestureArea(
 private fun AdjustmentHud(adjustment: AdjustmentLevel) {
     val brightnessLabel = stringResource(Res.string.player_brightness)
     val volumeLabel = stringResource(Res.string.player_volume)
+    val isBoost = adjustment.kind == Adjustment.VOLUME && adjustment.level > 1.01f
     val label = when (adjustment.kind) {
         Adjustment.BRIGHTNESS -> brightnessLabel
-        Adjustment.VOLUME -> volumeLabel
+        Adjustment.VOLUME -> if (isBoost) "Audio Boost" else volumeLabel
     }
     val icon = when (adjustment.kind) {
         Adjustment.BRIGHTNESS -> when {
@@ -238,14 +304,18 @@ private fun AdjustmentHud(adjustment: AdjustmentLevel) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
+                tint = if (isBoost) Color(0xFFFF9800) else Color.White,
                 modifier = Modifier.size(24.dp)
             )
             LinearProgressIndicator(
-                progress = { adjustment.level },
+                progress = { (adjustment.level / if (isBoost) 2f else 1f).coerceIn(0f, 1f) },
+                color = if (isBoost) Color(0xFFFF9800) else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.width(HUD_BAR_WIDTH)
             )
             Text(
-                text = "${(adjustment.level * 100).roundToInt()}%",
+                text = if (isBoost) "🚀 ${(adjustment.level * 100).roundToInt()}%" else "${(adjustment.level * 100).roundToInt()}%",
+                color = if (isBoost) Color(0xFFFFB74D) else Color.White,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 style = MaterialTheme.typography.labelLarge
             )
         }

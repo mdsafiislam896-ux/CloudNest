@@ -9,7 +9,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.VideoFile
+import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material3.ModalBottomSheet
+import com.safiislam.nexvault.presentation.components.FileListItem
 import androidx.compose.ui.unit.sp
 import com.safiislam.nexvault.domain.model.FileCategory
 import com.safiislam.nexvault.presentation.components.pressScale
@@ -191,6 +195,7 @@ fun HomeScreen(
     onOpenChannels: () -> Unit,
     onOpenCollection: (CollectionType) -> Unit,
     onOpenBackupSettings: () -> Unit,
+    onOpenCleaner: () -> Unit = {},
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -227,6 +232,89 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     CollectSnackbarMessages(viewModel.messages, snackbarHostState)
     var showCreateFolder by remember { mutableStateOf(false) }
+    var activeCategorySheet by remember { mutableStateOf<FileCategory?>(null) }
+
+    activeCategorySheet?.let { selectedCategory ->
+        val categoryFiles by remember(selectedCategory) {
+            viewModel.observeFilesByCategory(selectedCategory)
+        }.collectAsStateWithLifecycle(initialValue = emptyList())
+        val categoryTitle = when (selectedCategory) {
+            FileCategory.VIDEO -> "🎬 Videos"
+            FileCategory.AUDIO -> "🎵 Music & Audio"
+            FileCategory.DOCUMENT -> "📄 Documents & PDFs"
+            FileCategory.IMAGE -> "🖼️ Photos & Images"
+            FileCategory.ARCHIVE -> "📦 Archives"
+            FileCategory.OTHER -> "📁 Other Files"
+        }
+        ModalBottomSheet(
+            onDismissRequest = { activeCategorySheet = null }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = categoryTitle,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${categoryFiles.size} files",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (categoryFiles.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No files in this category yet",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.height(420.dp)
+                    ) {
+                        items(categoryFiles, key = { it.id }) { file ->
+                            FileListItem(
+                                file = file,
+                                selected = false,
+                                selectionMode = false,
+                                onClick = {
+                                    activeCategorySheet = null
+                                    onOpenFile(
+                                        file.id,
+                                        PreviewSequence(
+                                            categories = setOf(selectedCategory),
+                                            sortField = FileSortField.DATE_MODIFIED,
+                                            sortDirection = SortDirection.DESCENDING
+                                        )
+                                    )
+                                },
+                                onLongClick = {}
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     if (showCreateFolder) {
         RenameDialog(
@@ -309,7 +397,7 @@ fun HomeScreen(
             contentPadding = padding.add(
                 horizontal = 16.dp,
                 top = 8.dp,
-                bottom = 48.dp + LocalBottomBarInset.current
+                bottom = 96.dp + LocalBottomBarInset.current
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -412,41 +500,103 @@ fun HomeScreen(
                 val videoSlice = state.storage.firstOrNull { it.category == FileCategory.VIDEO }
                 val musicSlice = state.storage.firstOrNull { it.category == FileCategory.AUDIO }
                 val docSlice = state.storage.firstOrNull { it.category == FileCategory.DOCUMENT }
+                val photoSlice = state.storage.firstOrNull { it.category == FileCategory.IMAGE }
 
                 val videoCount = videoSlice?.fileCount ?: 0
                 val musicCount = musicSlice?.fileCount ?: 0
                 val docCount = docSlice?.fileCount ?: 0
+                val photoCount = photoSlice?.fileCount ?: 0
 
                 val videoPct = if (state.totalFiles > 0) (videoCount * 100 / state.totalFiles) else 0
                 val musicPct = if (state.totalFiles > 0) (musicCount * 100 / state.totalFiles) else 0
                 val docPct = if (state.totalFiles > 0) (docCount * 100 / state.totalFiles) else 0
+                val photoPct = if (state.totalFiles > 0) (photoCount * 100 / state.totalFiles) else 0
 
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CategoryPillCard(
+                            title = "🎬 Videos",
+                            stat = if (state.totalFiles > 0) "$videoPct%" else "$videoCount files",
+                            sub = "$videoCount files • ${Formatters.bytes(videoSlice?.totalBytes ?: 0L)}",
+                            icon = Icons.Outlined.VideoFile,
+                            containerColor = Color(0xFFE65100).copy(alpha = 0.88f),
+                            onClick = { activeCategorySheet = FileCategory.VIDEO },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CategoryPillCard(
+                            title = "🎵 Music",
+                            stat = if (state.totalFiles > 0) "$musicPct%" else "$musicCount files",
+                            sub = "$musicCount files • ${Formatters.bytes(musicSlice?.totalBytes ?: 0L)}",
+                            icon = Icons.Outlined.AudioFile,
+                            containerColor = Color(0xFFC2185B).copy(alpha = 0.88f),
+                            onClick = { activeCategorySheet = FileCategory.AUDIO },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CategoryPillCard(
+                            title = "📄 Documents",
+                            stat = if (state.totalFiles > 0) "$docPct%" else "$docCount files",
+                            sub = "$docCount files • ${Formatters.bytes(docSlice?.totalBytes ?: 0L)}",
+                            icon = Icons.Outlined.Description,
+                            containerColor = Color(0xFF00897B).copy(alpha = 0.88f),
+                            onClick = { activeCategorySheet = FileCategory.DOCUMENT },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CategoryPillCard(
+                            title = "🖼️ Photos",
+                            stat = if (state.totalFiles > 0) "$photoPct%" else "$photoCount files",
+                            sub = "$photoCount files • ${Formatters.bytes(photoSlice?.totalBytes ?: 0L)}",
+                            icon = Icons.Outlined.Image,
+                            containerColor = Color(0xFF5E35B1).copy(alpha = 0.88f),
+                            onClick = { activeCategorySheet = FileCategory.IMAGE },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+            item {
+                Text(
+                    text = "Power Tools & Security",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    CategoryPillCard(
-                        title = "Videos",
-                        stat = if (state.totalFiles > 0) "$videoPct%" else "$videoCount files",
-                        sub = Formatters.bytes(videoSlice?.totalBytes ?: 0L),
-                        icon = Icons.Outlined.VideoFile,
-                        containerColor = Color(0xFFE65100).copy(alpha = 0.85f),
+                    PowerToolCard(
+                        title = "Cache Cleaner",
+                        subtitle = "Free phone memory",
+                        icon = Icons.Filled.CleaningServices,
+                        accentColor = Color(0xFF00BFA5),
+                        onClick = onOpenCleaner,
                         modifier = Modifier.weight(1f)
                     )
-                    CategoryPillCard(
-                        title = "Music",
-                        stat = if (state.totalFiles > 0) "$musicPct%" else "$musicCount files",
-                        sub = Formatters.bytes(musicSlice?.totalBytes ?: 0L),
-                        icon = Icons.Outlined.AudioFile,
-                        containerColor = Color(0xFFC2185B).copy(alpha = 0.85f),
+                    PowerToolCard(
+                        title = "Secret Vault",
+                        subtitle = "Biometric locked",
+                        icon = Icons.Filled.Lock,
+                        accentColor = Color(0xFF7C5CFC),
+                        onClick = { onOpenCollection(CollectionType.HIDDEN) },
                         modifier = Modifier.weight(1f)
                     )
-                    CategoryPillCard(
-                        title = "Docs",
-                        stat = if (state.totalFiles > 0) "$docPct%" else "$docCount files",
-                        sub = Formatters.bytes(docSlice?.totalBytes ?: 0L),
-                        icon = Icons.Outlined.Description,
-                        containerColor = Color(0xFF00897B).copy(alpha = 0.85f),
+                    PowerToolCard(
+                        title = "Cloud Trash",
+                        subtitle = "30-day recovery",
+                        icon = Icons.Filled.Delete,
+                        accentColor = Color(0xFFFF5252),
+                        onClick = onOpenTrash,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -551,40 +701,23 @@ fun HomeScreen(
                 item {
                     SectionHeader(stringResource(Res.string.home_section_recent))
                     Spacer(Modifier.height(8.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(state.recentFiles, key = { it.id }) { file ->
-                            Column(
-                                modifier = Modifier
-                                    .width(112.dp)
-                                    .clip(MaterialTheme.shapes.large)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                                    .clickable(role = Role.Button) {
-                                        onOpenFile(
-                                            file.id,
-                                            PreviewSequence(
-                                                sortField = FileSortField.DATE_ADDED,
-                                                sortDirection = SortDirection.DESCENDING
-                                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        state.recentFiles.take(5).forEach { file ->
+                            FileListItem(
+                                file = file,
+                                selected = false,
+                                selectionMode = false,
+                                onClick = {
+                                    onOpenFile(
+                                        file.id,
+                                        PreviewSequence(
+                                            sortField = FileSortField.DATE_ADDED,
+                                            sortDirection = SortDirection.DESCENDING
                                         )
-                                    }
-                                    .padding(6.dp)
-                            ) {
-                                FileThumbnail(
-                                    file = file,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(100.dp)
-                                        .clip(MaterialTheme.shapes.medium)
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    text = file.name,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 2.dp)
-                                )
-                            }
+                                    )
+                                },
+                                onLongClick = {}
+                            )
                         }
                     }
                 }
@@ -595,11 +728,17 @@ fun HomeScreen(
                     Spacer(Modifier.height(8.dp))
                     StorageCard(slices = state.storage)
                     Spacer(Modifier.height(12.dp))
-                    CategoryTiles(slices = state.storage)
+                    CategoryTiles(
+                        slices = state.storage,
+                        onCategoryClick = { activeCategorySheet = it }
+                    )
                 }
             }
             item {
-                DriveCards()
+                DriveCards(
+                    onOpenCleaner = onOpenCleaner,
+                    onManageDrives = onOpenChannels
+                )
             }
             item {
                 CollectionLinks(
@@ -1276,13 +1415,16 @@ private fun CategoryPillCard(
     sub: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     containerColor: Color,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
+            .pressScale(0.96f)
             .clip(RoundedCornerShape(22.dp))
             .background(containerColor)
-            .padding(vertical = 14.dp, horizontal = 10.dp),
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp, horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
@@ -1310,10 +1452,65 @@ private fun CategoryPillCard(
             Text(
                 text = sub,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.75f),
+                color = Color.White.copy(alpha = 0.8f),
                 fontSize = 10.sp,
                 maxLines = 1
             )
         }
+    }
+}
+
+@Composable
+private fun PowerToolCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Column(
+        modifier = modifier
+            .pressScale(0.96f)
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (dark) Color(0xFF1E1E24) else Color.White)
+            .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(accentColor.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = accentColor,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

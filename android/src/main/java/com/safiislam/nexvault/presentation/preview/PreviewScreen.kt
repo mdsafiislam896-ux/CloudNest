@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -26,27 +27,41 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
+import com.safiislam.nexvault.presentation.components.FileThumbnail
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -213,6 +228,7 @@ fun PreviewScreen(
         initialPage = state.initialIndex.coerceAtMost(state.files.lastIndex),
         pageCount = { state.files.size }
     )
+    val pagerScope = rememberCoroutineScope()
     val pagedFile = state.files[pagerState.currentPage.coerceAtMost(state.files.lastIndex)]
     // The pager holds a snapshot, so the open row is read live and edits made elsewhere show at
     // once.
@@ -436,6 +452,121 @@ fun PreviewScreen(
                         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
                     )
                 )
+            }
+
+            // ── Samsung/Google Photos Style Bottom Filmstrip & Lightbox Bar for Images ──
+            AnimatedVisibility(
+                visible = chromeShown && currentFile.category == FileCategory.IMAGE,
+                enter = slideInVertically { height -> height } + fadeIn(),
+                exit = slideOutVertically { height -> height } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF101015).copy(alpha = 0.88f))
+                        .navigationBarsPadding()
+                        .padding(top = 10.dp, bottom = 8.dp)
+                ) {
+                    if (state.files.size > 1) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            itemsIndexed(
+                                items = state.files,
+                                key = { _, item -> "film-${item.id}" }
+                            ) { idx, item ->
+                                val isCurrent = idx == pagerState.currentPage
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (isCurrent) 54.dp else 44.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .then(
+                                            if (isCurrent) {
+                                                Modifier.border(
+                                                    2.dp,
+                                                    MaterialTheme.colorScheme.primary,
+                                                    RoundedCornerShape(10.dp)
+                                                )
+                                            } else Modifier
+                                        )
+                                        .clickable {
+                                            pagerScope.launch {
+                                                pagerState.animateScrollToPage(idx)
+                                            }
+                                        }
+                                ) {
+                                    FileThumbnail(
+                                        file = item,
+                                        cleanFileMode = false,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (currentFile.hasLocalCopy) {
+                            IconButton(
+                                onClick = { shareFile(context, currentFile, shareChooserTitle) }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Share,
+                                    contentDescription = stringResource(Res.string.preview_share_copy),
+                                    tint = Color.White
+                                )
+                            }
+                        } else if (currentFile.hasRemoteCopy) {
+                            IconButton(
+                                onClick = { viewModel.download(currentFile) }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Download,
+                                    contentDescription = stringResource(Res.string.common_download),
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { viewModel.setFavorite(currentFile, !currentFile.isFavorite) }
+                        ) {
+                            Icon(
+                                imageVector = if (currentFile.isFavorite) Icons.Filled.Star else Icons.Filled.StarOutline,
+                                contentDescription = stringResource(Res.string.preview_add_favorites),
+                                tint = if (currentFile.isFavorite) Color(0xFFFFD54F) else Color.White
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.showInfo(currentFile) }
+                        ) {
+                            Icon(
+                                Icons.Filled.Info,
+                                contentDescription = stringResource(Res.string.preview_file_info),
+                                tint = Color.White
+                            )
+                        }
+                        IconButton(
+                            onClick = { deleteTarget = currentFile }
+                        ) {
+                            Icon(
+                                Icons.Filled.DeleteOutline,
+                                contentDescription = stringResource(Res.string.common_move_trash),
+                                tint = Color(0xFFFF6B6B)
+                            )
+                        }
+                    }
+                }
             }
         }
     }

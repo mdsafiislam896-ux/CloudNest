@@ -45,7 +45,11 @@ private val DriveGradients = listOf(
 
 /** Swipeable drive cards (like the cloud-account cards in the design): name, usage bar and an Open pill. */
 @Composable
-internal fun DriveCards(modifier: Modifier = Modifier) {
+internal fun DriveCards(
+    onOpenCleaner: () -> Unit = {},
+    onManageDrives: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val repository = koinInject<ChannelRepository>()
     val flow = remember(repository) { repository.observeChannels() }
     val drives = flow.collectAsStateWithLifecycle(initialValue = emptyList()).value
@@ -54,12 +58,29 @@ internal fun DriveCards(modifier: Modifier = Modifier) {
     val largest = drives.maxOf { it.storedBytes }.coerceAtLeast(1L)
 
     Column(modifier = modifier) {
-        Text(
-            "Your drives",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Your Cloud Drives",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "+ Manage Drives",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onManageDrives() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(drives.size) { index ->
                 val drive = drives[index]
@@ -117,18 +138,18 @@ internal fun DriveCards(modifier: Modifier = Modifier) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Clean",
+                            text = "Clean Cache",
                             color = DriveGradients[index % DriveGradients.size][1],
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .background(Color.White)
-                                .clickable { scope.launch { repository.switchTo(drive.chatId) } }
-                                .padding(horizontal = 18.dp, vertical = 7.dp)
+                                .clickable { onOpenCleaner() }
+                                .padding(horizontal = 16.dp, vertical = 7.dp)
                         )
                         Text(
-                            text = if (drive.isActive) "Active ✓" else ">>>",
+                            text = if (drive.isActive) "Active ✓" else "Switch >>>",
                             color = Color.White,
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,

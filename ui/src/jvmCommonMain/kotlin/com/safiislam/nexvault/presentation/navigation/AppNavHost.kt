@@ -88,7 +88,8 @@ fun AppNavHost(
                         navController.navigateOnce(
                             Route.SettingsSection(SettingsSectionType.BACKUP.name)
                         )
-                    }
+                    },
+                    onOpenCleaner = { navController.navigateOnce(Route.Cleaner) }
                 )
             }
         }
