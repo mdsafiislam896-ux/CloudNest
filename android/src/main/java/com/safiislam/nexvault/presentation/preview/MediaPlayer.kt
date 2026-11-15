@@ -2,11 +2,18 @@ package com.safiislam.nexvault.presentation.preview
 
 import androidx.compose.material3.Button
 import com.safiislam.nexvault.resources.common_retry
+import android.content.ContentValues
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import android.util.Rational
+import android.view.PixelCopy
+import android.view.SurfaceView
 import android.view.WindowManager
 import androidx.activity.compose.LocalActivity
 import androidx.annotation.OptIn
@@ -120,11 +127,14 @@ fun MediaPlayer(
     onPreferredAudioLanguage: (String) -> Unit = {},
     onPreferredSubtitleLanguage: (String) -> Unit = {},
     onControlsVisibilityChanged: (Boolean) -> Unit = {},
+    onNextMedia: (() -> Unit)? = null,
+    onPrevMedia: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val activePage by rememberUpdatedState(isActivePage)
     val notifyControls by rememberUpdatedState(onControlsVisibilityChanged)
+    val nextMediaCallback by rememberUpdatedState(onNextMedia)
     val audioLanguage by rememberUpdatedState(preferredAudioLanguage)
     val subtitleLanguage by rememberUpdatedState(preferredSubtitleLanguage)
 
@@ -237,6 +247,13 @@ fun MediaPlayer(
     var videoPan by remember(content) { mutableStateOf(Offset.Zero) }
     var audioBoostFactor by remember(content) { mutableFloatStateOf(1f) }
     var subtitleScaleFactor by remember { mutableFloatStateOf(1f) }
+    var nightDimmerAlpha by remember { mutableFloatStateOf(0f) }
+    var loopPointA by remember(content) { mutableStateOf<Long?>(null) }
+    var loopPointB by remember(content) { mutableStateOf<Long?>(null) }
+    var sleepTimerMinutes by remember { mutableIntStateOf(0) }
+    var sleepRemainingSec by remember { mutableIntStateOf(0) }
+    var autoPlayNext by remember { mutableStateOf(true) }
+    var playerViewRef by remember(content) { mutableStateOf<PlayerView?>(null) }
     var playing by remember(player) { mutableStateOf(player?.isPlaying == true) }
     var sized by remember(player) { mutableStateOf((player?.videoSize?.width ?: 0) > 0) }
     var videoRatio by remember(player) {
@@ -244,6 +261,38 @@ fun MediaPlayer(
     }
     var decoderFailed by remember(player) { mutableStateOf(false) }
     var playbackFailed by remember(player) { mutableStateOf(false) }
+
+    val abLoopLabel = when {
+        loopPointA != null && loopPointB != null ->
+            "${Formatters.duration(loopPointA!!)}–${Formatters.duration(loopPointB!!)}"
+        loopPointA != null ->
+            "A: ${Formatters.duration(loopPointA!!)} → ?"
+        else -> "Off"
+    }
+
+    LaunchedEffect(player, loopPointA, loopPointB, playing) {
+        val startA = loopPointA ?: return@LaunchedEffect
+        val endB = loopPointB ?: return@LaunchedEffect
+        val p = player ?: return@LaunchedEffect
+        while (playing) {
+            if (p.currentPosition >= endB) {
+                p.seekTo(startA)
+            }
+            delay(120.milliseconds)
+        }
+    }
+
+    LaunchedEffect(sleepRemainingSec) {
+        if (sleepRemainingSec <= 0) return@LaunchedEffect
+        delay(1_000.milliseconds)
+        val next = sleepRemainingSec - 1
+        sleepRemainingSec = next
+        if (next <= 0 && sleepTimerMinutes > 0) {
+            player?.pause()
+            sleepTimerMinutes = 0
+            resumeBannerText = "⏲️ Sleep Timer paused playback"
+        }
+    }
 
     val loudnessEnhancer = remember(player) { mutableStateOf<LoudnessEnhancer?>(null) }
     DisposableEffect(player, audioBoostFactor) {
@@ -278,6 +327,17 @@ fun MediaPlayer(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (
+                    playbackState == Player.STATE_ENDED &&
+                    autoPlayNext &&
+                    player.repeatMode != Player.REPEAT_MODE_ONE &&
+                    loopPointB == null
+                ) {
+                    nextMediaCallback?.invoke()
+                }
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -370,9 +430,11 @@ fun MediaPlayer(
                         this.player = player
                         setBackgroundColor(Color.TRANSPARENT)
                         setShutterBackgroundColor(Color.TRANSPARENT)
+                        playerViewRef = this
                     }
                 },
                 update = { view ->
+                    playerViewRef = view
                     view.player = player
                     view.resizeMode = when (resizeMode) {
                         PlayerResizeMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -392,6 +454,13 @@ fun MediaPlayer(
                         translationY = videoPan.y
                     }
             )
+            if (nightDimmerAlpha > 0.01f) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(ComposeColor.Black.copy(alpha = nightDimmerAlpha))
+                )
+            }
         }
         if (!audioOnly && !sized) {
             Box(
@@ -531,6 +600,34 @@ fun MediaPlayer(
                 )
             }
         }
+        AnimatedVisibility(
+            visible = loopPointA != null && !inPipMode,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 80.dp, start = 16.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = ComposeColor(0xFF10B981).copy(alpha = 0.85f),
+                contentColor = ComposeColor.White,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable {
+                        loopPointA = null
+                        loopPointB = null
+                        resumeBannerText = "🔁 A–B Loop cleared"
+                    }
+            ) {
+                Text(
+                    text = "🔁 $abLoopLabel • Tap to Clear",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                )
+            }
+        }
         if (player != null) {
             PlayerControls(
                 player = player,
@@ -560,6 +657,114 @@ fun MediaPlayer(
                     videoZoom = it
                     if (it <= 1.01f) videoPan = Offset.Zero
                 },
+                onCaptureScreenshot = if (!audioOnly) {
+                    {
+                        val surfaceView = playerViewRef?.videoSurfaceView as? SurfaceView
+                        if (surfaceView != null && surfaceView.width > 0 && surfaceView.height > 0) {
+                            val bmp = Bitmap.createBitmap(
+                                surfaceView.width,
+                                surfaceView.height,
+                                Bitmap.Config.ARGB_8888
+                            )
+                            runCatching {
+                                PixelCopy.request(
+                                    surfaceView,
+                                    bmp,
+                                    { copyResult ->
+                                        if (copyResult == PixelCopy.SUCCESS) {
+                                            val saved = runCatching {
+                                                val values = ContentValues().apply {
+                                                    put(
+                                                        MediaStore.Images.Media.DISPLAY_NAME,
+                                                        "CloudNest_${System.currentTimeMillis()}.png"
+                                                    )
+                                                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                                                }
+                                                val uri = context.contentResolver.insert(
+                                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                                    values
+                                                )
+                                                if (uri != null) {
+                                                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                                                        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                                    }
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            }.getOrDefault(false)
+                                            resumeBannerText = if (saved) {
+                                                "📸 Frame saved to Gallery!"
+                                            } else {
+                                                "⚠️ Could not save frame"
+                                            }
+                                        } else {
+                                            resumeBannerText = "⚠️ Screenshot unavailable for this surface"
+                                        }
+                                    },
+                                    Handler(Looper.getMainLooper())
+                                )
+                            }.onFailure {
+                                resumeBannerText = "⚠️ Screenshot failed"
+                            }
+                        } else {
+                            resumeBannerText = "⚠️ Video frame not ready"
+                        }
+                    }
+                } else {
+                    null
+                },
+                abLoopLabel = abLoopLabel,
+                onCycleAbLoop = {
+                    val currentPos = player.currentPosition.coerceAtLeast(0L)
+                    when {
+                        loopPointA == null -> {
+                            loopPointA = currentPos
+                            resumeBannerText = "🔁 Loop A set at ${Formatters.duration(currentPos)}"
+                        }
+                        loopPointB == null -> {
+                            if (currentPos > loopPointA!! + 800L) {
+                                loopPointB = currentPos
+                                resumeBannerText =
+                                    "🔁 Looping ${Formatters.duration(loopPointA!!)} → ${Formatters.duration(currentPos)}"
+                            } else {
+                                loopPointA = null
+                                resumeBannerText = "🔁 A–B Loop cancelled"
+                            }
+                        }
+                        else -> {
+                            loopPointA = null
+                            loopPointB = null
+                            resumeBannerText = "🔁 A–B Loop off"
+                        }
+                    }
+                },
+                nightDimmerAlpha = nightDimmerAlpha,
+                onNightDimmerChange = {
+                    nightDimmerAlpha = it
+                    resumeBannerText = if (it > 0.01f) {
+                        "🌙 Night Dimmer ${(it * 100).roundToInt()}%"
+                    } else {
+                        "☀️ Night Dimmer Off"
+                    }
+                },
+                sleepTimerMinutes = sleepTimerMinutes,
+                onSleepTimerChange = { mins ->
+                    sleepTimerMinutes = mins
+                    sleepRemainingSec = mins * 60
+                    resumeBannerText = if (mins > 0) {
+                        "⏲️ Sleep Timer set for ${mins}m"
+                    } else {
+                        "⏲️ Sleep Timer Off"
+                    }
+                },
+                autoPlayNext = autoPlayNext,
+                onAutoPlayNextChange = {
+                    autoPlayNext = it
+                    resumeBannerText = if (it) "⏭️ Auto-Play Next On" else "⏭️ Auto-Play Next Off"
+                },
+                onNextMedia = onNextMedia,
+                onPrevMedia = onPrevMedia,
                 onPreferredAudioLanguage = onPreferredAudioLanguage,
                 onPreferredSubtitleLanguage = onPreferredSubtitleLanguage
             )

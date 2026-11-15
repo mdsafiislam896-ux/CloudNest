@@ -2,8 +2,11 @@ package com.safiislam.nexvault.presentation.preview
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.view.WindowManager
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -97,7 +100,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -262,6 +269,19 @@ fun PreviewScreen(
         }
     }
 
+    // Privacy Protection: Prevent screenshots/recent-apps thumbnails when viewing Hidden Vault files
+    DisposableEffect(activity, currentFile.isHidden) {
+        val window = activity?.window
+        if (currentFile.isHidden) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        onDispose {
+            if (currentFile.isHidden) {
+                window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -293,7 +313,21 @@ fun PreviewScreen(
                     onPreferredAudioLanguage = viewModel::setPreferredAudioLanguage,
                     onPreferredSubtitleLanguage = viewModel::setPreferredSubtitleLanguage,
                     onToggleChrome = { chromeVisible = !chromeVisible },
-                    onChromeRequested = { visible -> chromeVisible = visible }
+                    onChromeRequested = { visible -> chromeVisible = visible },
+                    onNextMedia = if (page < state.files.lastIndex) {
+                        {
+                            pagerScope.launch {
+                                pagerState.animateScrollToPage(page + 1)
+                            }
+                        }
+                    } else null,
+                    onPrevMedia = if (page > 0) {
+                        {
+                            pagerScope.launch {
+                                pagerState.animateScrollToPage(page - 1)
+                            }
+                        }
+                    } else null
                 )
             }
 
@@ -620,7 +654,9 @@ private fun PreviewPage(
     onChromeRequested: (Boolean) -> Unit,
     loadLinkMetadata: suspend (String) -> LinkMetadata?,
     storedTextScale: Float,
-    onTextScaleChange: (Float) -> Unit
+    onTextScaleChange: (Float) -> Unit,
+    onNextMedia: (() -> Unit)? = null,
+    onPrevMedia: (() -> Unit)? = null
 ) {
     // One state for the screen's life: re-creating it on save would leave the gesture writing to a
     // state nothing renders.
@@ -701,7 +737,9 @@ private fun PreviewPage(
                 preferredSubtitleLanguage = preferredSubtitleLanguage,
                 onPreferredAudioLanguage = onPreferredAudioLanguage,
                 onPreferredSubtitleLanguage = onPreferredSubtitleLanguage,
-                onControlsVisibilityChanged = onChromeRequested
+                onControlsVisibilityChanged = onChromeRequested,
+                onNextMedia = onNextMedia,
+                onPrevMedia = onPrevMedia
             )
 
         is PreviewContent.Pdf -> PdfPreview(path = content.path)
@@ -730,11 +768,20 @@ private fun PreviewPage(
                 .padding(previewContentPadding())
         ) {
             val linkContext = LocalContext.current
+            val ext = remember(file.name) {
+                file.name.substringAfterLast('.', "").lowercase()
+            }
             if (MimeTypes.isMarkdown(file.mimeType)) {
                 MarkdownText(
                     text = content.text,
                     textScale = textScale,
                     onOpenUrl = { url -> openUrl(linkContext, url) }
+                )
+            } else if (ext in CODE_EXTENSIONS) {
+                CodeSyntaxViewer(
+                    code = content.text,
+                    language = ext.uppercase(),
+                    textScale = textScale
                 )
             } else {
                 LinkedText(
@@ -1103,3 +1150,160 @@ private fun openUrl(context: Context, url: String) {
 private const val TEXT_SCALE_MIN = 0.7f
 private const val TEXT_SCALE_MAX = 3f
 private const val TEXT_SCALE_SAVE_DELAY_MS = 400L
+
+private val CODE_EXTENSIONS = setOf(
+    "kt", "kts", "java", "py", "js", "ts", "tsx", "jsx", "json", "xml",
+    "html", "css", "sql", "sh", "bash", "yaml", "yml", "c", "cpp", "h",
+    "rs", "go", "swift", "dart", "toml", "gradle", "properties"
+)
+
+@Composable
+private fun CodeSyntaxViewer(
+    code: String,
+    language: String,
+    textScale: Float
+) {
+    val context = LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+    val lines = remember(code) { code.lines() }
+    val highlighted = remember(code) { highlightSyntax(code) }
+
+    LaunchedEffect(copied) {
+        if (!copied) return@LaunchedEffect
+        delay(2_000.milliseconds)
+        copied = false
+    }
+
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF0E1017)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(18.dp))
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // IDE Top Header Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF171A24))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF7C5CFC).copy(alpha = 0.22f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = language,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFA78BFA)
+                        )
+                    }
+                    Text(
+                        text = "${lines.size} lines",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (copied) Color(0xFF10B981).copy(alpha = 0.25f)
+                            else Color.White.copy(alpha = 0.08f)
+                        )
+                        .clickable {
+                            val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            cb?.setPrimaryClip(ClipData.newPlainText("code", code))
+                            copied = true
+                        }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = if (copied) "✓ Copied" else "📋 Copy Code",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (copied) Color(0xFF34D399) else Color.White
+                    )
+                }
+            }
+            // Code Body with Line Numbers Gutter
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp, horizontal = 10.dp)
+            ) {
+                val lineNums = remember(lines.size) {
+                    (1..lines.size).joinToString("\n")
+                }
+                Text(
+                    text = lineNums,
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontFamily = FontFamily.Monospace)
+                        .scaledBy(textScale),
+                    color = Color(0xFF475569),
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.padding(end = 12.dp)
+                )
+                Text(
+                    text = highlighted,
+                    style = MaterialTheme.typography.bodySmall
+                        .copy(fontFamily = FontFamily.Monospace)
+                        .scaledBy(textScale),
+                    color = Color(0xFFE2E8F0),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+private val KEYWORD_REGEX = Regex(
+    "\\b(fun|val|var|class|object|interface|package|import|return|if|else|when|for|while|do|try|catch|finally|null|true|false|private|public|protected|internal|override|suspend|data|sealed|enum|companion|const|def|from|async|await|function|let|export|default|select|from|where|insert|update|delete|create|table)\\b"
+)
+private val STRING_REGEX = Regex("\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'")
+private val NUMBER_REGEX = Regex("\\b\\d+(\\.\\d+)?\\b")
+private val COMMENT_REGEX = Regex("//.*|#.*")
+
+private fun highlightSyntax(code: String): AnnotatedString = buildAnnotatedString {
+    append(code)
+    NUMBER_REGEX.findAll(code).forEach { match ->
+        addStyle(
+            SpanStyle(color = Color(0xFFF59E0B)),
+            match.range.first,
+            match.range.last + 1
+        )
+    }
+    KEYWORD_REGEX.findAll(code).forEach { match ->
+        addStyle(
+            SpanStyle(color = Color(0xFFC084FC), fontWeight = FontWeight.SemiBold),
+            match.range.first,
+            match.range.last + 1
+        )
+    }
+    STRING_REGEX.findAll(code).forEach { match ->
+        addStyle(
+            SpanStyle(color = Color(0xFF34D399)),
+            match.range.first,
+            match.range.last + 1
+        )
+    }
+    COMMENT_REGEX.findAll(code).forEach { match ->
+        addStyle(
+            SpanStyle(color = Color(0xFF64748B)),
+            match.range.first,
+            match.range.last + 1
+        )
+    }
+}

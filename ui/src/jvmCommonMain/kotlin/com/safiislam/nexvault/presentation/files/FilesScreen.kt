@@ -55,6 +55,8 @@ import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Search
@@ -257,6 +259,10 @@ fun FilesScreen(
     var contextSheetFile by remember { mutableStateOf<DriveFile?>(null) }
     var contextSheetFolder by remember { mutableStateOf<DriveFolder?>(null) }
     var confirmTrashContextItem by remember { mutableStateOf(false) }
+    var lockFolderTarget by remember { mutableStateOf<DriveFolder?>(null) }
+    var unlockFolderTarget by remember { mutableStateOf<DriveFolder?>(null) }
+    var lockStateRevision by remember { mutableIntStateOf(0) }
+    val feedbackScope = rememberCoroutineScope()
     val uploadPicker = LocalMultiFilePicker.current
     val onPickUploads = {
         uploadPicker.pick { references ->
@@ -757,7 +763,15 @@ fun FilesScreen(
                                     bottom = padding.calculateBottomPadding() +
                                             LocalBottomBarInset.current
                                 ),
-                                onOpenFolder = onOpenFolder,
+                                lockStateRevision = lockStateRevision,
+                                onOpenFolder = { folderId ->
+                                    val target = state.folders.firstOrNull { it.id == folderId }
+                                    if (target != null && LockedFolderPins.containsKey(folderId)) {
+                                        unlockFolderTarget = target
+                                    } else {
+                                        onOpenFolder(folderId)
+                                    }
+                                },
                                 onOpenFile = onOpenFile,
                                 viewModel = viewModel,
                                 onFolderMenuClick = { folder -> contextSheetFolder = folder },
@@ -1004,23 +1018,24 @@ fun FilesScreen(
     }
 
     contextSheetFolder?.let { folder ->
+        val folderIsLocked = LockedFolderPins.containsKey(folder.id)
         FileContextSheet(
             visible = true,
             onDismiss = { contextSheetFolder = null },
             title = folder.name,
-            subtitle = "Folder",
+            subtitle = if (folderIsLocked) "🔒 PIN Protected Folder" else "Folder",
             thumbnailContent = {
                 Box(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFFFFB800).copy(alpha = 0.16f)),
+                        .background(if (folderIsLocked) Color(0xFF7C5CFC).copy(alpha = 0.16f) else Color(0xFFFFB800).copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.FolderOpen,
+                        imageVector = if (folderIsLocked) Icons.Filled.Lock else Icons.Filled.FolderOpen,
                         contentDescription = null,
-                        tint = Color(0xFFFFB800),
+                        tint = if (folderIsLocked) Color(0xFF7C5CFC) else Color(0xFFFFB800),
                         modifier = Modifier.size(30.dp)
                     )
                 }
@@ -1031,6 +1046,21 @@ fun FilesScreen(
                     viewModel.toggleFolderSelection(folder.id)
                     viewModel.favoriteSelected(!folder.isFavorite)
                     viewModel.clearSelection()
+                })
+                add(FileContextAction(
+                    if (folderIsLocked) Icons.Filled.LockOpen else Icons.Filled.Lock,
+                    if (folderIsLocked) "Remove Folder PIN Lock" else "Lock Folder with PIN"
+                ) {
+                    contextSheetFolder = null
+                    if (folderIsLocked) {
+                        LockedFolderPins.remove(folder.id)
+                        lockStateRevision++
+                        feedbackScope.launch {
+                            snackbarHostState.showSnackbar("🔓 Folder lock removed for ${folder.name}")
+                        }
+                    } else {
+                        lockFolderTarget = folder
+                    }
                 })
                 add(FileContextAction(Icons.Filled.DriveFileRenameOutline, "Rename") {
                     contextSheetFolder = null
@@ -1056,7 +1086,48 @@ fun FilesScreen(
             }
         )
     }
+
+    lockFolderTarget?.let { folder ->
+        RenameDialog(
+            title = "🔒 Set PIN for '${folder.name}'",
+            initialValue = "",
+            confirmLabel = "Lock Folder",
+            onConfirm = { pin ->
+                lockFolderTarget = null
+                if (pin.isNotBlank()) {
+                    LockedFolderPins[folder.id] = pin.trim()
+                    lockStateRevision++
+                    feedbackScope.launch {
+                        snackbarHostState.showSnackbar("🔒 '${folder.name}' is now PIN protected")
+                    }
+                }
+            },
+            onDismiss = { lockFolderTarget = null }
+        )
+    }
+
+    unlockFolderTarget?.let { folder ->
+        RenameDialog(
+            title = "🔐 Enter PIN for '${folder.name}'",
+            initialValue = "",
+            confirmLabel = "Unlock",
+            onConfirm = { enteredPin ->
+                val expected = LockedFolderPins[folder.id]
+                unlockFolderTarget = null
+                if (enteredPin.trim() == expected) {
+                    onOpenFolder(folder.id)
+                } else {
+                    feedbackScope.launch {
+                        snackbarHostState.showSnackbar("❌ Incorrect Folder PIN")
+                    }
+                }
+            },
+            onDismiss = { unlockFolderTarget = null }
+        )
+    }
 }
+
+private val LockedFolderPins = java.util.concurrent.ConcurrentHashMap<String, String>()
 
 /** Deep trees keep only the last three folders inline, so the row never grows past one line. */
 @Composable
@@ -1157,6 +1228,7 @@ private fun FilesContent(
     state: FilesUiState,
     files: LazyPagingItems<DriveFile>,
     padding: PaddingValues,
+    lockStateRevision: Int = 0,
     onOpenFolder: (String) -> Unit,
     onOpenFile: (String, PreviewSequence) -> Unit,
     viewModel: FilesViewModel,
@@ -1197,14 +1269,16 @@ private fun FilesContent(
     ) {
         items(
             count = state.folders.size,
-            key = { "folder-${state.folders[it].id}" },
+            key = { "folder-${state.folders[it].id}-$lockStateRevision" },
             span = { GridItemSpan(maxLineSpan) }
         ) { index ->
             val folder = state.folders[index]
             val folderSelected = folder.id in state.folderSelection
+            val folderLocked = LockedFolderPins.containsKey(folder.id)
             FolderRow(
                 folder = folder,
                 selected = folderSelected,
+                isLocked = folderLocked,
                 onClick = {
                     if (state.selectionMode) viewModel.toggleFolderSelection(folder.id)
                     else onOpenFolder(folder.id)
@@ -1243,6 +1317,12 @@ private fun FilesContent(
                 onLongClick = { viewModel.toggleSelection(file.id) },
                 onMenuClick = if (!state.selectionMode) {
                     { onFileMenuClick?.invoke(file) }
+                } else null,
+                onSwipeFavorite = if (!state.selectionMode) {
+                    { viewModel.toggleFileFavorite(file) }
+                } else null,
+                onSwipeTrash = if (!state.selectionMode) {
+                    { viewModel.trashSingleFile(file) }
                 } else null,
                 modifier = Modifier.animateItem().focusHighlight(highlighted)
             )

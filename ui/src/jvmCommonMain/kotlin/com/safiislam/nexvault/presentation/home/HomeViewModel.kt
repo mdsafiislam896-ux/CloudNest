@@ -208,6 +208,32 @@ class HomeViewModel(
             )
         )
 
+    fun observeAllFilesBySize(): Flow<List<com.safiislam.nexvault.domain.model.DriveFile>> =
+        fileRepository.observeFiles(
+            com.safiislam.nexvault.domain.model.FileQuerySpec(
+                sortField = com.safiislam.nexvault.domain.model.FileSortField.SIZE,
+                sortDirection = com.safiislam.nexvault.domain.model.SortDirection.DESCENDING
+            )
+        )
+
+    fun observeFavoriteFiles(): Flow<List<com.safiislam.nexvault.domain.model.DriveFile>> =
+        fileRepository.observeFiles(
+            com.safiislam.nexvault.domain.model.FileQuerySpec(
+                favoritesOnly = true,
+                sortField = com.safiislam.nexvault.domain.model.FileSortField.DATE_MODIFIED,
+                sortDirection = com.safiislam.nexvault.domain.model.SortDirection.DESCENDING
+            )
+        )
+
+    fun moveToTrash(ids: List<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            fileDao.moveToTrash(ids, System.currentTimeMillis())
+            fileDao.markPendingPublish(ids)
+            _messages.tryEmit(UiText.Plain("Moved ${ids.size} duplicate file(s) to Trash"))
+        }
+    }
+
     /** A folder scan never reaches files added by hand, or canceled or failed on their way up. */
     fun backUpPending() {
         if (_scanning.value) return

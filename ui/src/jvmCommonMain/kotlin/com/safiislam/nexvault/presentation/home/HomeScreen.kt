@@ -12,6 +12,9 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.ModalBottomSheet
 import com.safiislam.nexvault.presentation.components.FileListItem
 import androidx.compose.ui.unit.sp
@@ -233,6 +236,227 @@ fun HomeScreen(
     CollectSnackbarMessages(viewModel.messages, snackbarHostState)
     var showCreateFolder by remember { mutableStateOf(false) }
     var activeCategorySheet by remember { mutableStateOf<FileCategory?>(null) }
+    var showDuplicateFinderSheet by remember { mutableStateOf(false) }
+    var showStorageAnalyzerSheet by remember { mutableStateOf(false) }
+    val favoriteFiles by remember { viewModel.observeFavoriteFiles() }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+
+    if (showDuplicateFinderSheet) {
+        val allFiles by remember { viewModel.observeAllFilesBySize() }
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+        val duplicateGroups = remember(allFiles) {
+            allFiles
+                .filter { it.sizeBytes > 0L }
+                .groupBy { file ->
+                    if (!file.contentHash.isNullOrBlank()) "hash:${file.contentHash}"
+                    else "ns:${file.name.lowercase().trim()}:${file.sizeBytes}"
+                }
+                .values
+                .filter { it.size > 1 }
+                .map { group -> group.sortedBy { it.createdAt } }
+                .sortedByDescending { group -> group.drop(1).sumOf { it.sizeBytes } }
+        }
+        val extraDuplicateIds = remember(duplicateGroups) {
+            duplicateGroups.flatMap { group -> group.drop(1).map { it.id } }
+        }
+        val wastedBytes = remember(duplicateGroups) {
+            duplicateGroups.sumOf { group -> group.drop(1).sumOf { it.sizeBytes } }
+        }
+        ModalBottomSheet(onDismissRequest = { showDuplicateFinderSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "🧹 Smart Duplicate Finder",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${duplicateGroups.size} duplicate sets • Wasted: ${Formatters.bytes(wastedBytes)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (extraDuplicateIds.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                viewModel.moveToTrash(extraDuplicateIds)
+                                showDuplicateFinderSheet = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                        ) {
+                            Text("Clean (${Formatters.bytes(wastedBytes)})", color = Color.White)
+                        }
+                    }
+                }
+                if (duplicateGroups.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "✨ Your cloud is 100% clean — no duplicate files found!",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.height(420.dp)
+                    ) {
+                        items(duplicateGroups, key = { it.first().id }) { group ->
+                            val original = group.first()
+                            val extras = group.drop(1)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .padding(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = original.name,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${group.size} copies • ${Formatters.bytes(original.sizeBytes)} each",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { viewModel.moveToTrash(extras.map { it.id }) }
+                                    ) {
+                                        Text("Remove ${extras.size} Extra")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showStorageAnalyzerSheet) {
+        val allFiles by remember { viewModel.observeAllFilesBySize() }
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+        val largestFiles = remember(allFiles) { allFiles.take(25) }
+        val maxFileBytes = remember(largestFiles) {
+            (largestFiles.firstOrNull()?.sizeBytes ?: 1L).coerceAtLeast(1L)
+        }
+        ModalBottomSheet(onDismissRequest = { showStorageAnalyzerSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "📊 Space Analyzer (Top Large Files)",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Total Cloud Storage: ${Formatters.bytes(state.remoteBytes)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (largestFiles.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No files stored yet",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.height(420.dp)
+                    ) {
+                        items(largestFiles, key = { "large-${it.id}" }) { file ->
+                            val ratio = (file.sizeBytes.toFloat() / maxFileBytes).coerceIn(0.04f, 1f)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                    .padding(bottom = 6.dp)
+                            ) {
+                                FileListItem(
+                                    file = file,
+                                    selected = false,
+                                    selectionMode = false,
+                                    onClick = {
+                                        showStorageAnalyzerSheet = false
+                                        onOpenFile(
+                                            file.id,
+                                            PreviewSequence(
+                                                sortField = FileSortField.SIZE,
+                                                sortDirection = SortDirection.DESCENDING
+                                            )
+                                        )
+                                    },
+                                    onLongClick = {}
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 18.dp)
+                                        .height(5.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(ratio)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(50))
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(Color(0xFF7C5CFC), Color(0xFFFF6584))
+                                                )
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     activeCategorySheet?.let { selectedCategory ->
         val categoryFiles by remember(selectedCategory) {
@@ -482,6 +706,134 @@ fun HomeScreen(
                     }
                 }
             }
+            if (state.favoriteFolders.isNotEmpty() || favoriteFiles.isNotEmpty()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.PushPin,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFB800),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "Pinned Workspace",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = "${state.favoriteFolders.size + favoriteFiles.size} pinned",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(state.favoriteFolders, key = { "pin-folder-${it.id}" }) { folder ->
+                                val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                                Row(
+                                    modifier = Modifier
+                                        .pressScale(0.96f)
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(if (dark) Color(0xFF1E1E26) else Color.White)
+                                        .border(
+                                            1.dp,
+                                            Brush.verticalGradient(
+                                                listOf(Color(0xFFFFB800).copy(alpha = 0.5f), Color.White.copy(alpha = 0.08f))
+                                            ),
+                                            RoundedCornerShape(18.dp)
+                                        )
+                                        .clickable { onOpenFolder(folder.id) }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB800),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = folder.name,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "Folder",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+                            items(favoriteFiles.take(8), key = { "pin-file-${it.id}" }) { file ->
+                                val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                                Row(
+                                    modifier = Modifier
+                                        .pressScale(0.96f)
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(if (dark) Color(0xFF1E1E26) else Color.White)
+                                        .border(
+                                            1.dp,
+                                            Brush.verticalGradient(
+                                                listOf(Color(0xFF7C5CFC).copy(alpha = 0.5f), Color.White.copy(alpha = 0.08f))
+                                            ),
+                                            RoundedCornerShape(18.dp)
+                                        )
+                                        .clickable {
+                                            onOpenFile(
+                                                file.id,
+                                                PreviewSequence(
+                                                    favoritesOnly = true,
+                                                    sortField = FileSortField.DATE_MODIFIED,
+                                                    sortDirection = SortDirection.DESCENDING
+                                                )
+                                            )
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Star,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFD54F),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = file.name.take(22),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = Formatters.bytes(file.sizeBytes),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -571,34 +923,57 @@ fun HomeScreen(
                 )
             }
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    PowerToolCard(
-                        title = "Cache Cleaner",
-                        subtitle = "Free phone memory",
-                        icon = Icons.Filled.CleaningServices,
-                        accentColor = Color(0xFF00BFA5),
-                        onClick = onOpenCleaner,
-                        modifier = Modifier.weight(1f)
-                    )
-                    PowerToolCard(
-                        title = "Secret Vault",
-                        subtitle = "Biometric locked",
-                        icon = Icons.Filled.Lock,
-                        accentColor = Color(0xFF7C5CFC),
-                        onClick = { onOpenCollection(CollectionType.HIDDEN) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    PowerToolCard(
-                        title = "Cloud Trash",
-                        subtitle = "30-day recovery",
-                        icon = Icons.Filled.Delete,
-                        accentColor = Color(0xFFFF5252),
-                        onClick = onOpenTrash,
-                        modifier = Modifier.weight(1f)
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        PowerToolCard(
+                            title = "Cache Cleaner",
+                            subtitle = "Free phone memory",
+                            icon = Icons.Filled.CleaningServices,
+                            accentColor = Color(0xFF00BFA5),
+                            onClick = onOpenCleaner,
+                            modifier = Modifier.weight(1f)
+                        )
+                        PowerToolCard(
+                            title = "Secret Vault",
+                            subtitle = "Biometric locked",
+                            icon = Icons.Filled.Lock,
+                            accentColor = Color(0xFF7C5CFC),
+                            onClick = { onOpenCollection(CollectionType.HIDDEN) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        PowerToolCard(
+                            title = "Cloud Trash",
+                            subtitle = "30-day recovery",
+                            icon = Icons.Filled.Delete,
+                            accentColor = Color(0xFFFF5252),
+                            onClick = onOpenTrash,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        PowerToolCard(
+                            title = "Duplicate Finder",
+                            subtitle = "Clean duplicate files",
+                            icon = Icons.Filled.ContentCopy,
+                            accentColor = Color(0xFFFF9800),
+                            onClick = { showDuplicateFinderSheet = true },
+                            modifier = Modifier.weight(1f)
+                        )
+                        PowerToolCard(
+                            title = "Space Analyzer",
+                            subtitle = "Top largest files",
+                            icon = Icons.Filled.DataUsage,
+                            accentColor = Color(0xFF29B6F6),
+                            onClick = { showStorageAnalyzerSheet = true },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
             if (state.favoriteFolders.isNotEmpty()) {
@@ -1310,6 +1685,13 @@ private fun HeroStorageCard(
             .pressScale(0.985f)
             .clip(RoundedCornerShape(32.dp))
             .background(brush)
+            .border(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.08f))
+                ),
+                RoundedCornerShape(32.dp)
+            )
             .padding(20.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1330,7 +1712,7 @@ private fun HeroStorageCard(
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Cloud Storages",
+                    text = name,
                     color = Color.White,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
@@ -1404,6 +1786,29 @@ private fun HeroStorageCard(
                     .clip(CircleShape)
                     .background(Color.White)
             )
+        }
+        if (slices.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                slices.take(4).forEach { slice ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.16f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${slice.category.name.lowercase().replaceFirstChar { it.uppercase() }}: ${Formatters.bytes(slice.totalBytes)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.92f),
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }

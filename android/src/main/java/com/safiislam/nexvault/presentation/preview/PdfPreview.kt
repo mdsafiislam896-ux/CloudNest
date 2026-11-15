@@ -52,7 +52,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import java.util.concurrent.ConcurrentHashMap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -101,7 +103,8 @@ import org.jetbrains.compose.resources.stringResource
  */
 @Composable
 fun PdfPreview(path: String, modifier: Modifier = Modifier) {
-    val listState = rememberLazyListState()
+    val savedPage = remember(path) { PdfResumePages[path] ?: 0 }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = savedPage)
     val scope = rememberCoroutineScope()
     val scale = remember(path) { Animatable(1f) }
     val offset = remember(path) { Animatable(Offset.Zero, Offset.VectorConverter) }
@@ -142,6 +145,12 @@ fun PdfPreview(path: String, modifier: Modifier = Modifier) {
     val totalPages = renderer.pageCount.coerceAtLeast(1)
     val currentPage by remember(listState, totalPages) {
         derivedStateOf { (listState.firstVisibleItemIndex + 1).coerceIn(1, totalPages) }
+    }
+    val progressPercent = remember(currentPage, totalPages) {
+        ((currentPage.toFloat() / totalPages.toFloat()) * 100f).toInt().coerceIn(1, 100)
+    }
+    LaunchedEffect(path, currentPage) {
+        PdfResumePages[path] = (currentPage - 1).coerceAtLeast(0)
     }
     val isBookmarked = (currentPage - 1) in bookmarks
 
@@ -256,7 +265,7 @@ fun PdfPreview(path: String, modifier: Modifier = Modifier) {
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        text = "📄 Page $currentPage of $totalPages",
+                        text = "📄 Page $currentPage of $totalPages • $progressPercent%",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = ComposeColor.White
@@ -469,3 +478,5 @@ private fun clampPdfOffset(target: Offset, scale: Float, viewport: IntSize): Off
 private const val MAX_SCALE = 6f
 private const val DOUBLE_TAP_SCALE = 2.5f
 private const val ZOOM_ANIMATION_MS = 250
+
+private val PdfResumePages = ConcurrentHashMap<String, Int>()

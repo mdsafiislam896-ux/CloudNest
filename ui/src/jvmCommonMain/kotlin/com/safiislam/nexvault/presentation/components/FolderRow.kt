@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Star
@@ -52,6 +53,7 @@ fun FolderRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    isLocked: Boolean = false,
     showFavorite: Boolean = true,
     showAvailableOffline: Boolean = true,
     onLongClick: () -> Unit = {},
@@ -81,7 +83,8 @@ fun FolderRow(
             .background(cardBg)
             .border(
                 width = if (selected) 2.dp else 1.dp,
-                color = if (selected) Color(0xFF7C5CFC) else Color.White.copy(alpha = 0.08f),
+                brush = if (selected) Brush.linearGradient(listOf(Color(0xFF7C5CFC), Color(0xFFFF6584)))
+                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.05f))),
                 shape = RoundedCornerShape(22.dp)
             )
             .combinedClickable(
@@ -102,13 +105,13 @@ fun FolderRow(
             modifier = Modifier
                 .size(if (compact) 44.dp else 52.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFFFFB800).copy(alpha = 0.16f)),
+                .background(if (isLocked) Color(0xFF7C5CFC).copy(alpha = 0.18f) else Color(0xFFFFB800).copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.Folder,
+                imageVector = if (isLocked) Icons.Filled.Lock else Icons.Filled.Folder,
                 contentDescription = null,
-                tint = Color(0xFFFFB800),
+                tint = if (isLocked) Color(0xFF7C5CFC) else Color(0xFFFFB800),
                 modifier = Modifier.size(if (compact) 26.dp else 30.dp)
             )
             if (selected) {
@@ -141,9 +144,9 @@ fun FolderRow(
                 color = cardText
             )
             Text(
-                text = folder.contentsLabel(),
+                text = if (isLocked) "🔒 PIN Protected • ${folder.contentsLabel()}" else folder.contentsLabel(),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (dark) Color(0xFF9E9E9E) else Color(0xFF757575),
+                color = if (isLocked) Color(0xFFA78BFA) else if (dark) Color(0xFF9E9E9E) else Color(0xFF757575),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

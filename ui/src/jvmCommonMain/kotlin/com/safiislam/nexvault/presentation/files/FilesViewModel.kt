@@ -512,6 +512,24 @@ class FilesViewModel(
         }
     }
 
+    fun toggleFileFavorite(file: DriveFile) {
+        viewModelScope.launch {
+            fileRepository.setFilesFavorite(listOf(file.id), !file.isFavorite)
+            _messages.tryEmit(
+                UiText.Plain(if (!file.isFavorite) "⭐ Added to Favorites" else "Removed from Favorites")
+            )
+        }
+    }
+
+    fun trashSingleFile(file: DriveFile) {
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                trashRepository.moveFilesToTrash(listOf(file.id))
+            }
+            _undoOffer.value = UndoOffer(listOf(file.id), emptyList(), 1)
+        }
+    }
+
     fun hideSelected(hidden: Boolean) {
         val ids = selection.value.toList()
         val folderIds = folderSelection.value.toList()

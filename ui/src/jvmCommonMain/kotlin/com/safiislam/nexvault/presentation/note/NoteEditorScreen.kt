@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -189,6 +190,12 @@ fun NoteEditorScreen(
                 onAction = { action ->
                     body = body.apply(action, linkText, linkUrl)
                     viewModel.setBody(body.text)
+                },
+                onInsertTemplate = { templateTitle, templateBody ->
+                    if (state.title.isBlank()) viewModel.setTitle(templateTitle)
+                    val nextText = if (body.text.isBlank()) templateBody else "${body.text.trimEnd()}\n\n$templateBody"
+                    body = TextFieldValue(nextText)
+                    viewModel.setBody(nextText)
                 }
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -228,7 +235,11 @@ fun NoteEditorScreen(
 }
 
 @Composable
-private fun MarkdownToolbar(enabled: Boolean, onAction: (MarkdownAction) -> Unit) {
+private fun MarkdownToolbar(
+    enabled: Boolean,
+    onAction: (MarkdownAction) -> Unit,
+    onInsertTemplate: (String, String) -> Unit
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -272,6 +283,36 @@ private fun MarkdownToolbar(enabled: Boolean, onAction: (MarkdownAction) -> Unit
         ToolbarButton(Icons.Filled.FormatQuote, Res.string.note_quote, enabled) {
             onAction(MarkdownAction.LinePrefix("> "))
         }
+        SuggestionChip(
+            onClick = {
+                onInsertTemplate(
+                    "Meeting Notes",
+                    "## 📋 Meeting Notes\n- **Date:** \n- **Attendees:** \n\n### 🎯 Agenda\n1. \n2. \n\n### ✅ Action Items\n- [ ] "
+                )
+            },
+            enabled = enabled,
+            label = { Text("📋 Meeting") }
+        )
+        SuggestionChip(
+            onClick = {
+                onInsertTemplate(
+                    "Task Checklist",
+                    "## ✅ Priority Tasks\n- [ ] High priority task\n- [ ] Secondary task\n- [ ] Review & follow-up\n\n### 📌 Notes\n> "
+                )
+            },
+            enabled = enabled,
+            label = { Text("✅ Todo") }
+        )
+        SuggestionChip(
+            onClick = {
+                onInsertTemplate(
+                    "Daily Journal",
+                    "## 📓 Daily Reflection\n### 🌟 Highlights\n- \n\n### 💡 Ideas & Learnings\n- \n\n### 🎯 Tomorrow's Focus\n- [ ] "
+                )
+            },
+            enabled = enabled,
+            label = { Text("📓 Journal") }
+        )
     }
 }
 

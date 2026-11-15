@@ -30,8 +30,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pause
@@ -42,9 +44,14 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SubtitlesOff
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -131,6 +138,17 @@ fun PlayerControls(
     onSubtitleScaleChange: (Float) -> Unit = {},
     videoZoom: Float = 1f,
     onVideoZoomChange: (Float) -> Unit = {},
+    onCaptureScreenshot: (() -> Unit)? = null,
+    abLoopLabel: String = "Off",
+    onCycleAbLoop: () -> Unit = {},
+    nightDimmerAlpha: Float = 0f,
+    onNightDimmerChange: (Float) -> Unit = {},
+    sleepTimerMinutes: Int = 0,
+    onSleepTimerChange: (Int) -> Unit = {},
+    autoPlayNext: Boolean = true,
+    onAutoPlayNextChange: (Boolean) -> Unit = {},
+    onNextMedia: (() -> Unit)? = null,
+    onPrevMedia: (() -> Unit)? = null,
     onPreferredAudioLanguage: (String) -> Unit = {},
     onPreferredSubtitleLanguage: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -276,6 +294,8 @@ fun PlayerControls(
                     ended = ended,
                     waiting = waitingForData,
                     onInteraction = onInteraction,
+                    onPrevMedia = onPrevMedia,
+                    onNextMedia = onNextMedia,
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
@@ -302,6 +322,8 @@ fun PlayerControls(
                         ended = ended,
                         waiting = waitingForData,
                         onInteraction = onInteraction,
+                        onPrevMedia = onPrevMedia,
+                        onNextMedia = onNextMedia,
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
                             .padding(bottom = 8.dp)
@@ -379,6 +401,25 @@ fun PlayerControls(
                                     onCycleResizeMode()
                                 }
                             )
+                            if (onCaptureScreenshot != null) {
+                                ControlButton(
+                                    icon = Icons.Filled.CameraAlt,
+                                    description = "Capture Screenshot",
+                                    onClick = {
+                                        onInteraction()
+                                        onCaptureScreenshot()
+                                    }
+                                )
+                            }
+                            ControlButton(
+                                icon = Icons.Filled.Repeat,
+                                description = "A-B Repeat Loop",
+                                active = abLoopLabel != "Off",
+                                onClick = {
+                                    onInteraction()
+                                    onCycleAbLoop()
+                                }
+                            )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ControlButton(
@@ -414,6 +455,7 @@ fun PlayerControls(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 32.dp)
             ) {
@@ -502,6 +544,76 @@ fun PlayerControls(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
+                            onCycleAbLoop()
+                        }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Repeat, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text("A-B Repeat Loop", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(
+                        text = abLoopLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (abLoopLabel != "Off") Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onAutoPlayNextChange(!autoPlayNext)
+                        }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.SkipNext, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text("Auto-Play Next in Folder", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(
+                        text = if (autoPlayNext) "On" else "Off",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (autoPlayNext) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val nextMinutes = when (sleepTimerMinutes) {
+                                0 -> 15
+                                15 -> 30
+                                30 -> 45
+                                45 -> 60
+                                else -> 0
+                            }
+                            onSleepTimerChange(nextMinutes)
+                        }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text("Sleep Timer", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(
+                        text = if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m" else "Off",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (sleepTimerMinutes > 0) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
                             val nextBoost = when {
                                 audioBoostFactor < 1.25f -> 1.5f
                                 audioBoostFactor < 1.75f -> 2.0f
@@ -525,6 +637,35 @@ fun PlayerControls(
                     )
                 }
                 if (!audioOnly) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val nextAlpha = when {
+                                    nightDimmerAlpha < 0.1f -> 0.25f
+                                    nightDimmerAlpha < 0.35f -> 0.5f
+                                    nightDimmerAlpha < 0.6f -> 0.7f
+                                    else -> 0f
+                                }
+                                onNightDimmerChange(nextAlpha)
+                            }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.DarkMode, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Text("Night Dimmer (Eye-Care)", style = MaterialTheme.typography.bodyLarge)
+                        }
+                        val dimmerLabel = when {
+                            nightDimmerAlpha < 0.1f -> "Off"
+                            nightDimmerAlpha < 0.35f -> "Low (25%)"
+                            nightDimmerAlpha < 0.6f -> "Medium (50%)"
+                            else -> "Deep (70%)"
+                        }
+                        Text(dimmerLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -692,13 +833,32 @@ private fun TransportRow(
     ended: Boolean,
     waiting: Boolean,
     onInteraction: () -> Unit,
+    onPrevMedia: (() -> Unit)? = null,
+    onNextMedia: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (onPrevMedia != null) {
+            IconButton(
+                onClick = {
+                    onInteraction()
+                    onPrevMedia()
+                },
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = playerSurfaceColor().copy(alpha = TRANSPORT_ALPHA),
+                    contentColor = playerContentColor()
+                )
+            ) {
+                Icon(
+                    Icons.Filled.SkipPrevious,
+                    contentDescription = "Previous media"
+                )
+            }
+        }
         IconButton(
             onClick = {
                 onInteraction()
@@ -769,6 +929,23 @@ private fun TransportRow(
                 Icons.Filled.Forward10,
                 contentDescription = stringResource(Res.string.preview_forward_10_seconds)
             )
+        }
+        if (onNextMedia != null) {
+            IconButton(
+                onClick = {
+                    onInteraction()
+                    onNextMedia()
+                },
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = playerSurfaceColor().copy(alpha = TRANSPORT_ALPHA),
+                    contentColor = playerContentColor()
+                )
+            ) {
+                Icon(
+                    Icons.Filled.SkipNext,
+                    contentDescription = "Next media"
+                )
+            }
         }
     }
 }
