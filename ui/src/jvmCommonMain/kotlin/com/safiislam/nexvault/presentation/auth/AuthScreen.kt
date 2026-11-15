@@ -86,12 +86,10 @@ fun AuthScreen(viewModel: AuthViewModel = koinViewModel()) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(40.dp))
-            Image(
-                painter = painterResource(Res.drawable.cloudnest_logo),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(RoundedCornerShape(26.dp))
+            com.safiislam.nexvault.presentation.components.CloudNestLogoBadge(
+                size = 104.dp,
+                animated = true,
+                showHalo = true
             )
             Spacer(Modifier.height(14.dp))
             Text("CloudNest", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)

@@ -13,6 +13,7 @@ import com.safiislam.nexvault.core.files.MimeTypes
 import com.safiislam.nexvault.core.files.PendingShare
 import com.safiislam.nexvault.domain.model.DriveFile
 import com.safiislam.nexvault.domain.model.DriveFolder
+import com.safiislam.nexvault.domain.model.FileCategory
 import com.safiislam.nexvault.domain.model.FileQuerySpec
 import com.safiislam.nexvault.domain.model.FileSortField
 import com.safiislam.nexvault.domain.model.SortDirection
@@ -99,9 +100,27 @@ class FilesViewModel(
 ) : ViewModel() {
 
     private val tab = kotlinx.coroutines.flow.MutableStateFlow(FilesTab.BROWSE)
+    private val categoryFilter = MutableStateFlow<FileCategory?>(null)
+    private val offlineOnlyFilter = MutableStateFlow(false)
+
+    val selectedCategory: StateFlow<FileCategory?> = categoryFilter.asStateFlow()
+    val offlineOnly: StateFlow<Boolean> = offlineOnlyFilter.asStateFlow()
 
     fun selectTab(value: FilesTab) {
         tab.value = value
+    }
+
+    fun setCategoryFilter(category: FileCategory?) {
+        categoryFilter.value = if (categoryFilter.value == category) null else category
+    }
+
+    fun toggleOfflineOnly() {
+        offlineOnlyFilter.update { !it }
+    }
+
+    fun clearFilters() {
+        categoryFilter.value = null
+        offlineOnlyFilter.value = false
     }
 
     fun switchDrive(chatId: Long) {
@@ -174,11 +193,20 @@ class FilesViewModel(
     private val currentFolder: Flow<DriveFolder?> = folderFlow()
 
     private val querySpec: Flow<FileQuerySpec> =
-        combine(settingsRepository.preferences, currentFolder, tab) { prefs, folder, currentTab ->
+        combine(
+            settingsRepository.preferences,
+            currentFolder,
+            tab,
+            categoryFilter,
+            offlineOnlyFilter
+        ) { prefs, folder, currentTab, category, offlineOnly ->
+            val categories = category?.let(::listOf) ?: emptyList()
             when (currentTab) {
                 FilesTab.BROWSE -> FileQuerySpec(
                     folderId = folderId,
                     filterByFolder = true,
+                    categories = categories,
+                    availableOfflineOnly = offlineOnly,
                     showHidden = folder?.isHidden == true,
                     showArchived = folder?.isArchived == true,
                     sortField = prefs.sortField,
@@ -187,6 +215,8 @@ class FilesViewModel(
 
                 FilesTab.RECENTS -> FileQuerySpec(
                     filterByFolder = false,
+                    categories = categories,
+                    availableOfflineOnly = offlineOnly,
                     sortField = com.safiislam.nexvault.domain.model.FileSortField.DATE_ADDED,
                     sortDirection = com.safiislam.nexvault.domain.model.SortDirection.DESCENDING
                 )
@@ -194,6 +224,8 @@ class FilesViewModel(
                 FilesTab.FAVORITES -> FileQuerySpec(
                     filterByFolder = false,
                     favoritesOnly = true,
+                    categories = categories,
+                    availableOfflineOnly = offlineOnly,
                     sortField = prefs.sortField,
                     sortDirection = prefs.sortDirection
                 )

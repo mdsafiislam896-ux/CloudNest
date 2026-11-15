@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -402,23 +403,31 @@ private fun FloatingNavigationBar(
         )
     }
 
-    Surface(
-        shape = RoundedCornerShape(BAR_CORNER),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
-        tonalElevation = 0.dp,
-        shadowElevation = 14.dp,
-        border = BorderStroke(
-            1.dp,
-            Brush.verticalGradient(
-                listOf(
-                    Color.White.copy(alpha = 0.16f),
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                )
-            )
-        ),
+    val navShape = RoundedCornerShape(BAR_CORNER)
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (dark) 0.78f else 0.84f)
+
+    Box(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = BAR_MARGIN, vertical = BAR_MARGIN)
+            .shadow(
+                elevation = 16.dp,
+                shape = navShape,
+                ambientColor = Color.Black.copy(alpha = 0.28f),
+                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+            )
+            .glassEffect(shape = navShape, tint = glassTint, blur = 24.dp)
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = if (dark) 0.20f else 0.72f),
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                    )
+                ),
+                shape = navShape
+            )
     ) {
         NavBarLayout(
             progressOf = { index -> progress[index].value },
@@ -472,7 +481,7 @@ private fun FloatingNavigationBar(
  * progress; leftover space is shared equally between the gaps, and the pill is the progress-weighted
  * blend of the tab rectangles, so it always hugs whichever tab(s) are mid-animation.
  */
-/** iPhone-style floating glass tab bar: translucent capsule, specular rim, jelly-spring lens behind the active tab. */
+/** iPhone-style floating glass tab bar: real frosted glass capsule, specular rim, and fluid gliding lens. */
 @Composable
 private fun IosGlassNavigationBar(
     selectedIndex: Int,
@@ -480,42 +489,85 @@ private fun IosGlassNavigationBar(
 ) {
     val entries = TopLevelDestination.entries
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
     val shape = RoundedCornerShape(32.dp)
-    val glass = if (dark) Color(0xFF0F0F12).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.90f)
+    val glass = if (dark) Color(0xFF101016).copy(alpha = 0.72f) else Color.White.copy(alpha = 0.76f)
     val rim = Brush.verticalGradient(
         listOf(
-            Color.White.copy(alpha = if (dark) 0.18f else 0.85f),
-            Color.White.copy(alpha = if (dark) 0.04f else 0.25f)
+            Color.White.copy(alpha = if (dark) 0.26f else 0.92f),
+            Color.White.copy(alpha = if (dark) 0.05f else 0.30f)
         )
     )
     Box(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .padding(horizontal = 18.dp, vertical = 8.dp)
             .fillMaxWidth()
             .shadow(
                 elevation = 20.dp,
                 shape = shape,
-                ambientColor = Color.Black.copy(alpha = 0.35f),
-                spotColor = Color.Black.copy(alpha = 0.35f)
+                ambientColor = Color.Black.copy(alpha = 0.32f),
+                spotColor = primary.copy(alpha = 0.25f)
             )
-            .clip(shape)
-            .background(glass)
+            .glassEffect(shape = shape, tint = glass, blur = 28.dp)
             .border(1.dp, rim, shape)
-            .height(64.dp)
+            .height(66.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp, vertical = 6.dp)
         ) {
-            entries.forEachIndexed { index, destination ->
-                IosTabItem(
-                    destination = destination,
-                    selected = index == selectedIndex,
-                    dark = dark,
-                    onClick = { if (index != selectedIndex) onNavigate(destination) },
-                    modifier = Modifier.weight(1f).fillMaxHeight()
-                )
+            val count = entries.size.coerceAtLeast(1)
+            val slotWidth = maxWidth / count
+            val safeIndex = selectedIndex.coerceIn(0, count - 1)
+            val lensOffset by animateDpAsState(
+                targetValue = slotWidth * safeIndex,
+                animationSpec = spring(dampingRatio = 0.74f, stiffness = Spring.StiffnessMediumLow),
+                label = "iosLensX"
+            )
+            val lensShape = RoundedCornerShape(22.dp)
+            Box(
+                modifier = Modifier
+                    .offset(x = lensOffset)
+                    .width(slotWidth)
+                    .fillMaxHeight()
+                    .padding(horizontal = 2.dp)
+                    .clip(lensShape)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                primary.copy(alpha = if (dark) 0.34f else 0.18f),
+                                secondary.copy(alpha = if (dark) 0.20f else 0.09f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = if (dark) 0.35f else 0.85f),
+                                primary.copy(alpha = 0.28f)
+                            )
+                        ),
+                        shape = lensShape
+                    )
+            )
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                entries.forEachIndexed { index, destination ->
+                    IosTabItem(
+                        destination = destination,
+                        selected = index == selectedIndex,
+                        dark = dark,
+                        accentColor = primary,
+                        onClick = { if (index != selectedIndex) onNavigate(destination) },
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                }
             }
         }
     }
@@ -526,19 +578,19 @@ private fun IosTabItem(
     destination: TopLevelDestination,
     selected: Boolean,
     dark: Boolean,
+    accentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalHapticFeedback.current
-    val accentColor = Color(0xFF9D4EDD)
     val tint by animateColorAsState(
-        targetValue = if (selected) accentColor else if (dark) Color(0xFF8E8E93) else Color(0xFF6C6C70),
+        targetValue = if (selected) accentColor else if (dark) Color(0xFFB4B4BE) else Color(0xFF5A5A62),
         animationSpec = tween(180),
         label = "iosTabTint"
     )
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.05f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        targetValue = if (selected) 1.08f else 1f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 460f),
         label = "iosTabScale"
     )
     Box(
@@ -556,32 +608,6 @@ private fun IosTabItem(
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 4.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                accentColor.copy(alpha = if (dark) 0.30f else 0.16f),
-                                Color(0xFF7C5CFC).copy(alpha = if (dark) 0.18f else 0.08f)
-                            )
-                        )
-                    )
-                    .border(
-                        1.dp,
-                        Brush.verticalGradient(
-                            listOf(
-                                accentColor.copy(alpha = 0.65f),
-                                Color(0xFF7C5CFC).copy(alpha = 0.20f)
-                            )
-                        ),
-                        RoundedCornerShape(20.dp)
-                    )
-            )
-        }
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -591,7 +617,7 @@ private fun IosTabItem(
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(23.dp)
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale
@@ -602,7 +628,9 @@ private fun IosTabItem(
                 text = stringResource(destination.labelRes),
                 style = MaterialTheme.typography.labelSmall,
                 color = tint,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                maxLines = 1,
+                softWrap = false,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
             )
         }
     }

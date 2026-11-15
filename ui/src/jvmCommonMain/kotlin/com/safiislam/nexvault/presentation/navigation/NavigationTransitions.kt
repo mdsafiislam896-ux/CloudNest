@@ -100,6 +100,7 @@ object NavigationTransitions {
         return when {
             current.hasRoute(Route.Home::class) ||
                     current.hasRoute(Route.Gallery::class) ||
+                    current.hasRoute(Route.Transfers::class) ||
                     current.hasRoute(Route.Settings::class) -> true
 
             current.hasRoute(Route.Files::class) -> toRoute<Route.Files>().folderId == null

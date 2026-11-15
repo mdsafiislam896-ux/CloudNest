@@ -11,6 +11,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.safiislam.nexvault.presentation.components.NexTopAppBar
 import com.safiislam.nexvault.presentation.components.NexDropdownMenu
+import com.safiislam.nexvault.presentation.components.shimmerSweep
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,6 +69,7 @@ import com.safiislam.nexvault.presentation.components.ConfirmDialog
 import com.safiislam.nexvault.presentation.components.EmptyState
 import com.safiislam.nexvault.presentation.components.liftedTopAppBarColors
 import com.safiislam.nexvault.presentation.components.rememberToolbarLift
+import com.safiislam.nexvault.presentation.navigation.LocalBottomBarInset
 import com.safiislam.nexvault.resources.Res
 import com.safiislam.nexvault.resources.common_actions
 import com.safiislam.nexvault.resources.common_back
@@ -226,7 +229,7 @@ fun TransfersScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = padding.add(horizontal = 16.dp, top = 16.dp, bottom = 16.dp),
+            contentPadding = padding.add(horizontal = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item(key = "overview") {
@@ -455,11 +458,19 @@ private fun IdmSegmentedProgress(
     modifier: Modifier = Modifier,
     segments: Int = 8
 ) {
-    val activeColor = MaterialTheme.colorScheme.primary
+    val activeBrush = Brush.horizontalGradient(
+        listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+    )
+    val pausedBrush = Brush.horizontalGradient(
+        listOf(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+            MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f)
+        )
+    )
     val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
 
     Row(
-        modifier = modifier.height(6.dp),
+        modifier = modifier.height(7.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -469,20 +480,18 @@ private fun IdmSegmentedProgress(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(3.5.dp))
                     .background(trackColor)
             ) {
                 if (segmentFill > 0f) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(segmentFill)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(
-                                if (isRunning) activeColor
-                                else activeColor.copy(alpha = 0.6f)
-                            )
+                            .height(7.dp)
+                            .clip(RoundedCornerShape(3.5.dp))
+                            .background(if (isRunning) activeBrush else pausedBrush)
+                            .shimmerSweep(enabled = isRunning, highlightAlpha = 0.42f)
                     )
                 }
             }

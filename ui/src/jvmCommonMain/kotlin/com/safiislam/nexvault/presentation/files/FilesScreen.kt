@@ -17,7 +17,12 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.safiislam.nexvault.domain.model.FileCategory
+import com.safiislam.nexvault.presentation.components.CloudNestLogoBadge
+import com.safiislam.nexvault.presentation.components.label
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -240,6 +245,8 @@ fun FilesScreen(
     viewModel: FilesViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
+    val offlineOnly by viewModel.offlineOnly.collectAsStateWithLifecycle()
     val renameTarget by viewModel.renameTarget.collectAsStateWithLifecycle()
     val files = viewModel.pagedFiles.collectAsLazyPagingItems()
     val infoTarget by viewModel.infoTarget.collectAsStateWithLifecycle()
@@ -585,10 +592,23 @@ fun FilesScreen(
                         NexTopAppBar(
                             colors = liftedTopAppBarColors(lifted),
                             title = {
-                                Text(
-                                    text = if (onBack == null) "My Folders 🤙" else stringResource(Res.string.files),
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
+                                if (onBack == null) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CloudNestLogoBadge(size = 28.dp, cornerRadius = 8.dp)
+                                        Spacer(Modifier.width(10.dp))
+                                        Text(
+                                            text = "CloudNest Files",
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = state.folderName.resolve(),
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             },
                             navigationIcon = {
                                 onBack?.let {
@@ -661,13 +681,14 @@ fun FilesScreen(
                             button = {
                                 val fabPrimary = MaterialTheme.colorScheme.primary
                                 val fabSecondary = MaterialTheme.colorScheme.secondary
+                                val fabTint = MaterialTheme.colorScheme.onPrimary
                                 ToggleFloatingActionButton(
                                     checked = showAddMenu,
                                     onCheckedChange = { showAddMenu = it },
                                     containerColor = { progress ->
                                         androidx.compose.ui.graphics.lerp(
-                                            Color(0xFF1E1E24),
-                                            Color(0xFF7C5CFC),
+                                            fabPrimary,
+                                            fabSecondary,
                                             progress
                                         )
                                     }
@@ -679,7 +700,7 @@ fun FilesScreen(
                                             Icons.Filled.Add
                                         },
                                         contentDescription = stringResource(Res.string.common_add),
-                                        tint = Color.White
+                                        tint = fabTint
                                     )
                                 }
                             }
@@ -737,6 +758,13 @@ fun FilesScreen(
                             onDrive = viewModel::switchDrive
                         )
                     }
+                    QuickFilterChipRow(
+                        selectedCategory = selectedCategory,
+                        offlineOnly = offlineOnly,
+                        onCategoryClick = viewModel::setCategoryFilter,
+                        onOfflineToggle = viewModel::toggleOfflineOnly,
+                        onClear = viewModel::clearFilters
+                    )
                     if (state.breadcrumbs.size > 1) {
                         Breadcrumbs(crumbs = state.breadcrumbs, onOpen = onOpenCrumb)
                     }
@@ -745,13 +773,20 @@ fun FilesScreen(
                         onRefresh = viewModel::refresh,
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        val hasFilters = selectedCategory != null || offlineOnly
                         if (isLoading) {
                             LoadingState()
                         } else if (isEmpty) {
                             EmptyState(
                                 icon = Icons.Outlined.FolderOff,
-                                title = stringResource(Res.string.files_nothing_here_yet),
-                                description = stringResource(Res.string.files_back_import_appear)
+                                title = if (hasFilters) "No matching files" else stringResource(Res.string.files_nothing_here_yet),
+                                description = if (hasFilters) {
+                                    "Try clearing the active filter or switching category."
+                                } else {
+                                    stringResource(Res.string.files_back_import_appear)
+                                },
+                                actionLabel = if (hasFilters) "Clear filters" else null,
+                                onAction = if (hasFilters) viewModel::clearFilters else null
                             )
                         } else {
                             FilesContent(
@@ -1422,6 +1457,49 @@ private const val FOCUS_FILL_SCALE = 0.25f
 private val FOCUS_OUTLINE_WIDTH = 3.dp
 private val FOCUS_TINT_RADIUS = 18.dp
 
+
+@Composable
+private fun QuickFilterChipRow(
+    selectedCategory: FileCategory?,
+    offlineOnly: Boolean,
+    onCategoryClick: (FileCategory) -> Unit,
+    onOfflineToggle: () -> Unit,
+    onClear: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.FilterChip(
+            selected = selectedCategory == null && !offlineOnly,
+            onClick = onClear,
+            label = { Text("All") }
+        )
+        androidx.compose.material3.FilterChip(
+            selected = offlineOnly,
+            onClick = onOfflineToggle,
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.OfflinePin,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+            },
+            label = { Text("Offline") }
+        )
+        FileCategory.entries.filter { it != FileCategory.OTHER }.forEach { category ->
+            androidx.compose.material3.FilterChip(
+                selected = selectedCategory == category,
+                onClick = { onCategoryClick(category) },
+                label = { Text(category.label()) }
+            )
+        }
+    }
+}
 
 /** Browse / Recents / Favorites switcher plus quick drive chips (visible when there is more than one drive). */
 @Composable

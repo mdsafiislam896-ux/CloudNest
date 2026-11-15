@@ -22,10 +22,20 @@ import com.safiislam.nexvault.domain.model.FileCategory
 import com.safiislam.nexvault.presentation.components.pressScale
 import com.safiislam.nexvault.presentation.components.IconTile
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Speed
+import com.safiislam.nexvault.presentation.components.CloudNestLogoBadge
+import com.safiislam.nexvault.presentation.components.CloudNestMark
+import com.safiislam.nexvault.presentation.components.shimmerSweep
+import com.safiislam.nexvault.presentation.components.staggeredAppear
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -199,6 +209,10 @@ fun HomeScreen(
     onOpenCollection: (CollectionType) -> Unit,
     onOpenBackupSettings: () -> Unit,
     onOpenCleaner: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
+    onNewNote: () -> Unit = {},
+    onOpenHealth: () -> Unit = {},
+    onOpenFiles: () -> Unit = {},
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -558,7 +572,13 @@ fun HomeScreen(
         snackbarHost = { BottomBarSnackbarHost(snackbarHostState) },
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(stringResource(Res.string.app_name)) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CloudNestLogoBadge(size = 30.dp, cornerRadius = 9.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(stringResource(Res.string.app_name), fontWeight = FontWeight.Bold)
+                    }
+                },
                 subtitle = {
                     val status = rememberConnectionStatus(
                         offline = state.offline,
@@ -574,7 +594,7 @@ fun HomeScreen(
                         if (shown != null) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 ConnectionDot(status = shown.indicator)
-                                Spacer(Modifier.width(4.dp))
+                                Spacer(Modifier.width(5.dp))
                                 Text(stringResource(shown.labelRes))
                             }
                         }
@@ -582,6 +602,9 @@ fun HomeScreen(
                     lastConnectionStatus = status ?: lastConnectionStatus
                 },
                 actions = {
+                    IconButton(onClick = onOpenSearch) {
+                        Icon(Icons.Filled.Search, contentDescription = "Search")
+                    }
                     if (state.appLockEnabled) {
                         IconButton(onClick = viewModel::lockNow) {
                             Icon(
@@ -626,23 +649,116 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
-                    val hour = java.time.LocalTime.now().hour
-                    Text(
-                        text = when {
-                            hour < 5 -> "Good night"
-                            hour < 12 -> "Good morning"
-                            hour < 17 -> "Good afternoon"
-                            else -> "Good evening"
-                        },
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Your Personal Cloud Universe",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                Column(
+                    modifier = Modifier.staggeredAppear(0),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val hour = java.time.LocalTime.now().hour
+                        Column {
+                            Text(
+                                text = when {
+                                    hour < 5 -> "Good night"
+                                    hour < 12 -> "Good morning"
+                                    hour < 17 -> "Good afternoon"
+                                    else -> "Good evening"
+                                },
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Encrypted personal cloud & workspace",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (state.activeTransferCount > 0) {
+                            Row(
+                                modifier = Modifier
+                                    .pressScale(0.95f)
+                                    .clip(RoundedCornerShape(100))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                        RoundedCornerShape(100)
+                                    )
+                                    .clickable(onClick = onOpenTransfers)
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.SwapVert,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "${state.activeTransferCount} syncing",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
+                    // Pill Quick Search Bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pressScale(0.985f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                                    alpha = if (dark) 0.85f else 0.94f
+                                )
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .clickable(onClick = onOpenSearch)
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = "Search files, notes, folders & tags...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "${state.totalFiles}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
                 }
             }
             item {
@@ -651,59 +767,47 @@ fun HomeScreen(
                     totalFiles = state.totalFiles,
                     totalBytes = state.remoteBytes,
                     backedUpPercent = if (state.totalFiles <= 0) 100 else (state.backedUpCount * 100 / state.totalFiles).coerceIn(0, 100),
-                    slices = state.storage
+                    slices = state.storage,
+                    onClick = { showStorageAnalyzerSheet = true },
+                    modifier = Modifier.staggeredAppear(1)
                 )
             }
             item {
+                // Quick Actions Dock
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF1E1E24) else Color.White)
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                        .clickable { onOpenTransfers() }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .staggeredAppear(2),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF121216)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowUpward,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Text(
-                        text = "Unlimited storage",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color.White else Color(0xFF1A1A1A),
+                    QuickActionTile(
+                        label = "Files",
+                        icon = Icons.Filled.Folder,
+                        accent = MaterialTheme.colorScheme.primary,
+                        onClick = onOpenFiles,
                         modifier = Modifier.weight(1f)
                     )
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(Color(0xFF7C5CFC), Color(0xFFFF6584))
-                                )
-                            )
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "Cloud",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    QuickActionTile(
+                        label = "New Note",
+                        icon = Icons.Filled.Edit,
+                        accent = Color(0xFF29B6F6),
+                        onClick = onNewNote,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickActionTile(
+                        label = "Transfers",
+                        icon = Icons.Filled.SwapVert,
+                        accent = Color(0xFF00C9A7),
+                        onClick = onOpenTransfers,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickActionTile(
+                        label = "Health",
+                        icon = Icons.Filled.Speed,
+                        accent = Color(0xFFFF9800),
+                        onClick = onOpenHealth,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
             if (state.favoriteFolders.isNotEmpty() || favoriteFiles.isNotEmpty()) {
@@ -959,7 +1063,7 @@ fun HomeScreen(
                     ) {
                         PowerToolCard(
                             title = "Duplicate Finder",
-                            subtitle = "Clean duplicate files",
+                            subtitle = "Clean copies",
                             icon = Icons.Filled.ContentCopy,
                             accentColor = Color(0xFFFF9800),
                             onClick = { showDuplicateFinderSheet = true },
@@ -967,51 +1071,20 @@ fun HomeScreen(
                         )
                         PowerToolCard(
                             title = "Space Analyzer",
-                            subtitle = "Top largest files",
+                            subtitle = "Largest files",
                             icon = Icons.Filled.DataUsage,
                             accentColor = Color(0xFF29B6F6),
                             onClick = { showStorageAnalyzerSheet = true },
                             modifier = Modifier.weight(1f)
                         )
-                    }
-                }
-            }
-            if (state.favoriteFolders.isNotEmpty()) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Favorite Folders",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                        PowerToolCard(
+                            title = "Cloud Health",
+                            subtitle = "Sync & speed",
+                            icon = Icons.Filled.Speed,
+                            accentColor = Color(0xFF26C6DA),
+                            onClick = onOpenHealth,
+                            modifier = Modifier.weight(1f)
                         )
-                    }
-                }
-                item {
-                    val foldersToShow = state.favoriteFolders.take(4)
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        foldersToShow.chunked(2).forEach { rowFolders ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                rowFolders.forEach { folder ->
-                                    FolderGridItem(
-                                        folder = folder,
-                                        onClick = { onOpenFolder(folder.id) },
-                                        onLongClick = { onOpenFolder(folder.id) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (rowFolders.size == 1) {
-                                    Spacer(Modifier.weight(1f))
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -1041,72 +1114,31 @@ fun HomeScreen(
                     )
                 }
             }
-            if (state.favoriteFolders.isNotEmpty()) {
-                item {
-                    SectionHeader(stringResource(Res.string.home_section_favorites))
-                    Spacer(Modifier.height(8.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        state.favoriteFolders.take(5).forEach { folder ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(MaterialTheme.shapes.medium)
-                                    .clickable(role = Role.Button) { onOpenFolder(folder.id) }
-                                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Filled.Folder,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(Modifier.width(12.dp))
-                                Text(
-                                    folder.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
             if (state.showRecentSection && state.recentFiles.isNotEmpty()) {
                 item {
                     SectionHeader(stringResource(Res.string.home_section_recent))
                     Spacer(Modifier.height(8.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        state.recentFiles.take(5).forEach { file ->
-                            FileListItem(
-                                file = file,
-                                selected = false,
-                                selectionMode = false,
-                                onClick = {
-                                    onOpenFile(
-                                        file.id,
-                                        PreviewSequence(
-                                            sortField = FileSortField.DATE_ADDED,
-                                            sortDirection = SortDirection.DESCENDING
+                        state.recentFiles.take(5).forEachIndexed { idx, file ->
+                            Box(modifier = Modifier.staggeredAppear(idx)) {
+                                FileListItem(
+                                    file = file,
+                                    selected = false,
+                                    selectionMode = false,
+                                    onClick = {
+                                        onOpenFile(
+                                            file.id,
+                                            PreviewSequence(
+                                                sortField = FileSortField.DATE_ADDED,
+                                                sortDirection = SortDirection.DESCENDING
+                                            )
                                         )
-                                    )
-                                },
-                                onLongClick = {}
-                            )
+                                    },
+                                    onLongClick = {}
+                                )
+                            }
                         }
                     }
-                }
-            }
-            if (state.storage.isNotEmpty()) {
-                item {
-                    SectionHeader(stringResource(Res.string.home_section_storage))
-                    Spacer(Modifier.height(8.dp))
-                    StorageCard(slices = state.storage)
-                    Spacer(Modifier.height(12.dp))
-                    CategoryTiles(
-                        slices = state.storage,
-                        onCategoryClick = { activeCategorySheet = it }
-                    )
                 }
             }
             item {
@@ -1668,46 +1700,122 @@ private val LEGEND_ROW_GAP = 6.dp
 
 /** Big gradient "Cloud Storage" card: drive name, size, file count and a colour-segmented usage bar. */
 @Composable
+private fun QuickActionTile(
+    label: String,
+    icon: ImageVector,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Column(
+        modifier = modifier
+            .pressScale(0.94f)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                if (dark) MaterialTheme.colorScheme.surfaceContainerHigh
+                else Color.White
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        accent.copy(alpha = 0.36f),
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+                ),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(accent.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = accent,
+                modifier = Modifier.size(19.dp)
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun HeroStorageCard(
     name: String,
     totalFiles: Int,
     totalBytes: Long,
     backedUpPercent: Int,
-    slices: List<StorageSlice>
+    slices: List<StorageSlice>,
+    onClick: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
     val brush = Brush.linearGradient(
-        listOf(Color(0xFF7C5CFC), Color(0xFF5B35E5))
+        listOf(
+            androidx.compose.ui.graphics.lerp(primary, Color(0xFF3E22B0), 0.38f),
+            androidx.compose.ui.graphics.lerp(secondary, Color(0xFF14184E), 0.52f)
+        )
+    )
+    val animatedProgress by animateFloatAsState(
+        targetValue = (backedUpPercent / 100f).coerceIn(0.04f, 1f),
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessLow),
+        label = "heroStorageProgress"
     )
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .pressScale(0.985f)
+            .shadow(
+                elevation = 16.dp,
+                shape = RoundedCornerShape(32.dp),
+                ambientColor = primary.copy(alpha = 0.38f),
+                spotColor = secondary.copy(alpha = 0.32f)
+            )
             .clip(RoundedCornerShape(32.dp))
             .background(brush)
+            .shimmerSweep(highlightAlpha = 0.08f)
             .border(
                 1.dp,
                 Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.08f))
+                    listOf(Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.08f))
                 ),
                 RoundedCornerShape(32.dp)
             )
+            .clickable(onClick = onClick)
             .padding(20.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White),
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .border(
+                        1.dp,
+                        Color.White.copy(alpha = 0.34f),
+                        RoundedCornerShape(17.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Filled.Cloud,
-                    contentDescription = null,
-                    tint = Color(0xFF7C5CFC),
-                    modifier = Modifier.size(32.dp)
-                )
+                CloudNestMark(size = 44.dp, animated = true)
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -1715,12 +1823,14 @@ private fun HeroStorageCard(
                     text = name,
                     color = Color.White,
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "$totalFiles Files",
-                        color = Color.White.copy(alpha = 0.85f),
+                        color = Color.White.copy(alpha = 0.88f),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.width(8.dp))
@@ -1730,59 +1840,77 @@ private fun HeroStorageCard(
                             .clip(CircleShape)
                             .background(Color(0xFF38D39F))
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(5.dp))
                     Text(
-                        "Sync active",
-                        color = Color.White.copy(alpha = 0.85f),
+                        "Unlimited • Sync active",
+                        color = Color.White.copy(alpha = 0.86f),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
-            Text(
-                "$backedUpPercent% safe",
-                color = Color.White,
-                style = MaterialTheme.typography.labelLarge,
+            Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.2f))
+                    .background(Color.White.copy(alpha = 0.18f))
+                    .border(0.8.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(50))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
-            )
+            ) {
+                Text(
+                    "$backedUpPercent% safe",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
-        Spacer(Modifier.height(22.dp))
-        Text(
-            "${Formatters.bytes(totalBytes)} of 2 TB used",
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
+        Spacer(Modifier.height(20.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column {
+                Text(
+                    text = Formatters.bytes(totalBytes),
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = "of Unlimited Telegram Vault • Tap to analyze",
+                    color = Color.White.copy(alpha = 0.78f),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
         Spacer(Modifier.height(14.dp))
         androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(18.dp)) {
-            val fraction = (backedUpPercent / 100f).coerceIn(0.02f, 1f)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
                     .align(Alignment.CenterStart)
                     .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.28f))
+                    .background(Color.White.copy(alpha = 0.24f))
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(fraction)
+                    .fillMaxWidth(animatedProgress)
                     .height(8.dp)
                     .align(Alignment.CenterStart)
                     .clip(RoundedCornerShape(50))
                     .background(
                         Brush.horizontalGradient(
-                            listOf(Color(0xFFF368E0), Color(0xFFFFB86B), Color(0xFF37D6D0))
+                            listOf(Color(0xFFF368E0), Color(0xFFFFB86B), Color(0xFF3FF4F7))
                         )
                     )
             )
             Box(
                 modifier = Modifier
-                    .offset(x = maxWidth * fraction - 9.dp)
+                    .offset(x = maxWidth * animatedProgress - 9.dp)
                     .size(18.dp)
                     .align(Alignment.CenterStart)
+                    .shadow(4.dp, CircleShape)
                     .clip(CircleShape)
                     .background(Color.White)
             )
@@ -1803,7 +1931,7 @@ private fun HeroStorageCard(
                         Text(
                             text = "${slice.category.name.lowercase().replaceFirstChar { it.uppercase() }}: ${Formatters.bytes(slice.totalBytes)}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.92f),
+                            color = Color.White.copy(alpha = 0.94f),
                             fontSize = 10.sp
                         )
                     }
@@ -1823,29 +1951,45 @@ private fun CategoryPillCard(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val endTone = androidx.compose.ui.graphics.lerp(containerColor, Color.Black, 0.28f)
     Column(
         modifier = modifier
-            .pressScale(0.96f)
-            .clip(RoundedCornerShape(22.dp))
-            .background(containerColor)
+            .pressScale(0.955f)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.linearGradient(listOf(containerColor, endTone)))
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.36f), Color.Transparent)
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp, horizontal = 12.dp),
+            .padding(vertical = 15.dp, horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Color.White.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.labelMedium,
-            color = Color.White.copy(alpha = 0.9f),
-            fontWeight = FontWeight.Medium
+            color = Color.White.copy(alpha = 0.94f),
+            fontWeight = FontWeight.SemiBold
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             text = stat,
             style = MaterialTheme.typography.titleLarge,
@@ -1857,9 +2001,10 @@ private fun CategoryPillCard(
             Text(
                 text = sub,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.8f),
+                color = Color.White.copy(alpha = 0.82f),
                 fontSize = 10.sp,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -1877,19 +2022,35 @@ private fun PowerToolCard(
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     Column(
         modifier = modifier
-            .pressScale(0.96f)
+            .pressScale(0.955f)
             .clip(RoundedCornerShape(22.dp))
-            .background(if (dark) Color(0xFF1E1E24) else Color.White)
-            .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+            .background(if (dark) MaterialTheme.colorScheme.surfaceContainerHigh else Color.White)
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        accentColor.copy(alpha = 0.42f),
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+                ),
+                shape = RoundedCornerShape(22.dp)
+            )
             .clickable(onClick = onClick)
             .padding(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(accentColor.copy(alpha = 0.16f)),
+                .size(42.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            accentColor.copy(alpha = 0.22f),
+                            accentColor.copy(alpha = 0.10f)
+                        )
+                    )
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(

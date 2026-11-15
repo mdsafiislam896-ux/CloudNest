@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.safiislam.nexvault.presentation.common.Formatters
+import com.safiislam.nexvault.presentation.components.shimmerSweep
 
 /**
  * IDM-Style Turbo Parallel Transfer Overview Dashboard.
@@ -78,9 +79,16 @@ internal fun TransfersOverview(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(
+                elevation = 14.dp,
+                shape = RoundedCornerShape(26.dp),
+                ambientColor = Color(0xFF3B1E78).copy(alpha = 0.45f),
+                spotColor = Color(0xFF0F4C81).copy(alpha = 0.45f)
+            )
             .clip(RoundedCornerShape(26.dp))
             .background(cardGradient)
-            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(26.dp))
+            .shimmerSweep(enabled = state.active.isNotEmpty(), highlightAlpha = 0.10f)
+            .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(26.dp))
             .padding(20.dp)
     ) {
         // Top Header: IDM Engine status indicator badge

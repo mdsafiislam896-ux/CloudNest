@@ -41,9 +41,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import com.safiislam.nexvault.presentation.components.CloudNestLogoBadge
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -482,7 +485,23 @@ fun GalleryScreen(
             } else {
                 NexTopAppBar(
                     colors = liftedTopAppBarColors(lifted),
-                    title = { Text(state.albumTitle ?: stringResource(Res.string.gallery_title)) },
+                    title = {
+                        if (onBack == null && state.albumTitle == null) {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                CloudNestLogoBadge(size = 28.dp, cornerRadius = 8.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    stringResource(Res.string.gallery_title),
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
+                        } else {
+                            Text(
+                                state.albumTitle ?: stringResource(Res.string.gallery_title),
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                    },
                     navigationIcon = {
                         onBack?.let {
                             IconButton(onClick = it) {

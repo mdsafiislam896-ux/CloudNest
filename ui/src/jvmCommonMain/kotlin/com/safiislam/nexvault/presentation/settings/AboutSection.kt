@@ -46,6 +46,10 @@ import com.safiislam.nexvault.core.update.AppLinks
 import com.safiislam.nexvault.presentation.platform.LocalAppIcon
 import com.safiislam.nexvault.presentation.platform.LocalAppVersion
 import com.safiislam.nexvault.presentation.platform.LocalUrlOpener
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.text.font.FontWeight
+import com.safiislam.nexvault.presentation.components.CloudNestLogoBadge
 import com.safiislam.nexvault.presentation.components.UpdateDialog
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -62,22 +66,30 @@ fun AboutSection(state: SettingsUiState, viewModel: SettingsViewModel) {
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
-        LocalAppIcon.current(
-            Modifier
-                .size(88.dp)
-                .clip(MaterialTheme.shapes.extraLarge)
+        CloudNestLogoBadge(
+            size = 96.dp,
+            animated = true,
+            showHalo = true
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = stringResource(Res.string.app_name),
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
-        Text(
-            text = stringResource(Res.string.about_version, LocalAppVersion.current),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
+        Surface(
+            shape = RoundedCornerShape(100),
+            color = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Text(
+                text = stringResource(Res.string.about_version, LocalAppVersion.current),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+            )
+        }
         Text(
             text = stringResource(Res.string.about_tagline),
             style = MaterialTheme.typography.bodyMedium,

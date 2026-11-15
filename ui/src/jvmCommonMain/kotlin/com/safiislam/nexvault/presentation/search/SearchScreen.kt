@@ -1,18 +1,25 @@
 package com.safiislam.nexvault.presentation.search
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -21,6 +28,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OfflinePin
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.outlined.Search
@@ -29,8 +37,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -38,9 +46,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.safiislam.nexvault.domain.model.FileCategory
@@ -109,23 +120,68 @@ fun SearchScreen(
                 TopAppBar(
                     colors = liftedTopAppBarColors(lifted),
                     title = {
-                        OutlinedTextField(
-                            value = state.query,
-                            onValueChange = viewModel::setQuery,
-                            placeholder = { Text(stringResource(Res.string.app_search_files)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            trailingIcon = {
+                        Surface(
+                            shape = RoundedCornerShape(100),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = 8.dp)
+                                .height(44.dp)
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                                    RoundedCornerShape(100)
+                                )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (state.query.isEmpty()) {
+                                        Text(
+                                            text = stringResource(Res.string.app_search_files),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = state.query,
+                                        onValueChange = viewModel::setQuery,
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                                 if (state.query.isNotEmpty()) {
-                                    IconButton(onClick = { viewModel.setQuery("") }) {
+                                    IconButton(
+                                        onClick = { viewModel.setQuery("") },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
                                         Icon(
                                             Icons.Filled.Close,
-                                            contentDescription = stringResource(Res.string.common_clear)
+                                            contentDescription = stringResource(Res.string.common_clear),
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
                             }
-                        )
+                        }
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -198,6 +254,22 @@ fun SearchScreen(
                         bottom = 12.dp + padding.calculateBottomPadding()
                     )
                 ) {
+                    item(key = "results_summary") {
+                        val total = state.folders.size + state.results.size
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "$total results found (${state.folders.size} folders • ${state.results.size} files)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                     if (state.folders.isNotEmpty()) {
                         item(key = "folders_header") {
                             SearchSectionHeader(

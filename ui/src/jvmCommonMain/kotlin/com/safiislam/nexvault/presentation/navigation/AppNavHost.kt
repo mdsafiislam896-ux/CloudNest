@@ -89,7 +89,11 @@ fun AppNavHost(
                             Route.SettingsSection(SettingsSectionType.BACKUP.name)
                         )
                     },
-                    onOpenCleaner = { navController.navigateOnce(Route.Cleaner) }
+                    onOpenCleaner = { navController.navigateOnce(Route.Cleaner) },
+                    onOpenSearch = { navController.navigateOnce(Route.Search) },
+                    onNewNote = { navController.navigateOnce(Route.NoteEditor(folderId = null)) },
+                    onOpenHealth = { navController.navigateOnce(Route.CloudHealth) },
+                    onOpenFiles = { navController.navigateOnce(Route.Files(null)) }
                 )
             }
         }
@@ -161,7 +165,9 @@ fun AppNavHost(
             )
         }
         composable<Route.Transfers> {
-            TransfersScreen(onBack = { navController.popBackStackOnce() })
+            UnderBottomBar {
+                TransfersScreen(onBack = { navController.popBackStackOnce() })
+            }
         }
         composable<Route.Search> {
             SearchScreen(

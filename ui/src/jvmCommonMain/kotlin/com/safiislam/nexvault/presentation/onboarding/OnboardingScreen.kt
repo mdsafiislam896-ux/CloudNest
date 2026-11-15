@@ -606,10 +606,10 @@ private fun WelcomeStep(onContinue: () -> Unit) {
             .padding(horizontal = 28.dp, vertical = 36.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        androidx.compose.foundation.Image(
-            painter = painterResource(com.safiislam.nexvault.resources.Res.drawable.cloudnest_logo),
-            contentDescription = null,
-            modifier = Modifier.size(150.dp).clip(RoundedCornerShape(36.dp))
+        com.safiislam.nexvault.presentation.components.CloudNestLogoBadge(
+            size = 152.dp,
+            animated = true,
+            showHalo = true
         )
         Spacer(Modifier.height(28.dp))
         Text(
