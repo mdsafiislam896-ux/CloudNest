@@ -993,7 +993,9 @@ private fun AppearanceSection(state: SettingsUiState, viewModel: SettingsViewMod
             options = listOf(
                 DesignStyle.COLORFUL to "Colorful (default)",
                 DesignStyle.IOS_GLASS to "iPhone Glass",
-                DesignStyle.WARM to "Warm Orange"
+                DesignStyle.WARM to "Warm Orange",
+                DesignStyle.LAVENDER_3D to "Lavender / Violet 3D",
+                DesignStyle.AMOLED_NEON to "AMOLED Dark (Neon)"
             ),
             selected = prefs.designStyle,
             onSelect = { choice ->
@@ -1050,6 +1052,8 @@ private fun AppearanceSection(state: SettingsUiState, viewModel: SettingsViewMod
                     DesignStyle.COLORFUL -> "Colorful (default)"
                     DesignStyle.IOS_GLASS -> "iPhone Glass"
                     DesignStyle.WARM -> "Warm Orange"
+                    DesignStyle.LAVENDER_3D -> "Lavender / Violet 3D"
+                    DesignStyle.AMOLED_NEON -> "AMOLED Dark (Neon)"
                 },
                 onClick = { showStyleDialog = true }
             )

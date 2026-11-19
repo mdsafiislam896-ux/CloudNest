@@ -8,5 +8,7 @@ package com.safiislam.nexvault.domain.model
 enum class DesignStyle {
     COLORFUL,
     IOS_GLASS,
-    WARM
+    WARM,
+    LAVENDER_3D,
+    AMOLED_NEON
 }

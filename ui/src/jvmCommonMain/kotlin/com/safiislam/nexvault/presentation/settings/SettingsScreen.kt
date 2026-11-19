@@ -265,6 +265,8 @@ private fun SettingsIdentityCard(
                                 DesignStyle.COLORFUL -> "Colorful"
                                 DesignStyle.IOS_GLASS -> "iPhone Glass"
                                 DesignStyle.WARM -> "Warm"
+                                DesignStyle.LAVENDER_3D -> "Lavender 3D"
+                                DesignStyle.AMOLED_NEON -> "AMOLED Neon"
                             }
                         )
                     }

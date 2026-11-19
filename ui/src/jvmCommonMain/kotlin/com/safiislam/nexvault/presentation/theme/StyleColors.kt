@@ -110,3 +110,147 @@ val WarmDarkColorScheme: ColorScheme = darkColorScheme(
     surfaceContainerHigh = Color(0xFF3A3935),
     surfaceContainerHighest = Color(0xFF43423D)
 )
+
+/** Neon palette constants matching Design Reference 3. */
+val NeonViolet = Color(0xFF7C5CFC)
+val NeonPink = Color(0xFFF368E0)
+val NeonCyan = Color(0xFF3FF4F7)
+val NeonAmber = Color(0xFFFFB800)
+
+/** Lavender/Violet 3D constants matching Design Reference 1. */
+val LavenderPrimary = Color(0xFF7657F6)
+val LavenderSoft = Color(0xFFA478FF)
+val LavenderPastel = Color(0xFFD0BCFF)
+val LavenderSurfaceLight = Color(0xFFF8F6FF)
+val LavenderSurfaceDark = Color(0xFF1A1528)
+
+/** Lavender/Violet 3D look (Design Reference 1): soft pastel lavender/violet tones and pristine surfaces. */
+val LavenderLightColorScheme: ColorScheme = lightColorScheme(
+    primary = LavenderPrimary, // #7657F6
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFEADBFF),
+    onPrimaryContainer = Color(0xFF24005A),
+    secondary = LavenderSoft, // #A478FF
+    onSecondary = Color(0xFF24005A),
+    secondaryContainer = Color(0xFFF0E8FF),
+    onSecondaryContainer = Color(0xFF2C1060),
+    tertiary = LavenderPastel, // #D0BCFF
+    onTertiary = Color(0xFF381E72),
+    tertiaryContainer = Color(0xFFF3EDFF),
+    onTertiaryContainer = Color(0xFF25005A),
+    error = Color(0xFFBA1A1A),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002),
+    background = LavenderSurfaceLight, // #F8F6FF
+    surface = LavenderSurfaceLight, // #F8F6FF
+    onBackground = Color(0xFF1A1528),
+    onSurface = Color(0xFF1A1528),
+    surfaceVariant = Color(0xFFE7E0EC),
+    onSurfaceVariant = Color(0xFF49454F),
+    outline = Color(0xFF79747E),
+    outlineVariant = Color(0xFFCAC4D0),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF4F1FA),
+    surfaceContainer = Color(0xFFEFEBF6),
+    surfaceContainerHigh = Color(0xFFE9E4F0),
+    surfaceContainerHighest = Color(0xFFE3DEEB)
+)
+
+val LavenderDarkColorScheme: ColorScheme = darkColorScheme(
+    primary = LavenderSoft, // #A478FF
+    onPrimary = Color(0xFF2B0068),
+    primaryContainer = Color(0xFF5A38B8),
+    onPrimaryContainer = Color(0xFFEADBFF),
+    secondary = LavenderPastel, // #D0BCFF
+    onSecondary = Color(0xFF331B6F),
+    secondaryContainer = Color(0xFF483085),
+    onSecondaryContainer = Color(0xFFEADBFF),
+    tertiary = LavenderPrimary, // #7657F6
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFF3C208A),
+    onTertiaryContainer = Color(0xFFD0BCFF),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = LavenderSurfaceDark, // #1A1528
+    surface = LavenderSurfaceDark, // #1A1528
+    onBackground = Color(0xFFEDE7F6),
+    onSurface = Color(0xFFEDE7F6),
+    surfaceVariant = Color(0xFF49454F),
+    onSurfaceVariant = Color(0xFFCAC4D0),
+    outline = Color(0xFF938F99),
+    outlineVariant = Color(0xFF49454F),
+    surfaceContainerLowest = Color(0xFF130F20),
+    surfaceContainerLow = Color(0xFF211B32),
+    surfaceContainer = Color(0xFF27213A),
+    surfaceContainerHigh = Color(0xFF312B46),
+    surfaceContainerHighest = Color(0xFF3C3554)
+)
+
+/** AMOLED Dark (Neon) look (Design Reference 3): pitch-black canvas with electric neon accents. */
+val AmoledNeonDarkColorScheme: ColorScheme = darkColorScheme(
+    primary = NeonViolet, // #7C5CFC
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFF3D248C),
+    onPrimaryContainer = Color(0xFFE0D8FF),
+    secondary = NeonCyan, // #3FF4F7
+    onSecondary = Color(0xFF003738),
+    secondaryContainer = Color(0xFF004F51),
+    onSecondaryContainer = Color(0xFF86F8FA),
+    tertiary = NeonPink, // #F368E0
+    onTertiary = Color(0xFF4C0044),
+    tertiaryContainer = Color(0xFF700065),
+    onTertiaryContainer = Color(0xFFFFD7F3),
+    error = Color(0xFFFF5252),
+    onError = Color.Black,
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = Color(0xFF000000), // pitch-black #000000
+    surface = Color(0xFF000000), // pitch-black #000000
+    onBackground = Color(0xFFF0F0F8),
+    onSurface = Color(0xFFF0F0F8),
+    surfaceVariant = Color(0xFF13161F),
+    onSurfaceVariant = Color(0xFFC7C8D4),
+    outline = Color(0xFF6B7280),
+    outlineVariant = Color(0xFF222634),
+    surfaceContainerLowest = Color(0xFF000000),
+    surfaceContainerLow = Color(0xFF07080D),
+    surfaceContainer = Color(0xFF0D0F16), // #0D0F16
+    surfaceContainerHigh = Color(0xFF13161F),
+    surfaceContainerHighest = Color(0xFF1C202E)
+)
+
+/** AMOLED Neon Light fallback. */
+val AmoledNeonLightColorScheme: ColorScheme = lightColorScheme(
+    primary = Color(0xFF6544E8),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFE5DFFF),
+    onPrimaryContainer = Color(0xFF1D0061),
+    secondary = Color(0xFF00A2A5),
+    onSecondary = Color(0xFF002021),
+    secondaryContainer = Color(0xFF9CF0F2),
+    onSecondaryContainer = Color(0xFF002021),
+    tertiary = Color(0xFFCC1C99),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFFD7EC),
+    onTertiaryContainer = Color(0xFF3B002B),
+    error = Color(0xFFBA1A1A),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002),
+    background = Color(0xFFFBFBFF),
+    surface = Color(0xFFFBFBFF),
+    onBackground = Color(0xFF13141B),
+    onSurface = Color(0xFF13141B),
+    surfaceVariant = Color(0xFFE3E1EC),
+    onSurfaceVariant = Color(0xFF46464F),
+    outline = Color(0xFF767680),
+    outlineVariant = Color(0xFFC7C5D0),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF4F3FB),
+    surfaceContainer = Color(0xFFEEEEF6),
+    surfaceContainerHigh = Color(0xFFE8E8F0),
+    surfaceContainerHighest = Color(0xFFE2E2EA)
+)

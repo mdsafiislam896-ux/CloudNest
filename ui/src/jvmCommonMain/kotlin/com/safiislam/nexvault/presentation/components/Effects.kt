@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
@@ -45,6 +46,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -54,15 +57,160 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** Semantic hierarchy for scale feedback upon interaction. */
+enum class TargetComponentType {
+    ICON_ACTION,
+    FAB,
+    NAV_TAB,
+    BUTTON,
+    CARD,
+    LIST_ITEM,
+    DEFAULT
+}
+
+/**
+ * Pure Kotlin mathematical and physical parameters governing tactile animations,
+ * spring curves, shimmer sweeps, and component geometry.
+ */
+object EffectsPhysics {
+    // Component scale hierarchy
+    const val SCALE_ICON_ACTION = 0.90f
+    const val SCALE_FAB = 0.91f
+    const val SCALE_NAV_TAB = 0.92f
+    const val SCALE_BUTTON = 0.96f
+    const val SCALE_CARD = 0.97f
+    const val SCALE_LIST_ITEM = 0.98f
+    const val SCALE_DEFAULT = 0.97f
+    const val SCALE_IDLE = 1.0f
+
+    const val DEFAULT_PRESSED_SCALE = 0.97f
+    const val BUTTON_PRESSED_SCALE = 0.965f
+
+    // Spring physics constants
+    const val STIFFNESS_PRESS = Spring.StiffnessMedium // 1500f
+    const val DAMPING_PRESS = Spring.DampingRatioNoBouncy // 1.0f
+
+    const val STIFFNESS_RELEASE = Spring.StiffnessMedium // 1500f
+    const val DAMPING_RELEASE = Spring.DampingRatioMediumBouncy // 0.75f
+
+    const val STIFFNESS_ENTRANCE = Spring.StiffnessMediumLow // 400f
+    const val DAMPING_ENTRANCE = Spring.DampingRatioNoBouncy // 1.0f
+
+    // Stagger constants
+    const val STAGGER_STEP_MS = 36L
+    const val MAX_STAGGER_ITEMS = 8
+    const val MAX_STAGGER_INDEX = 8
+
+    // Shimmer constants
+    const val SHIMMER_DURATION_MS = 1900
+    const val SHIMMER_PHASE_START = -0.6f
+    const val SHIMMER_PHASE_END = 1.6f
+    const val SHIMMER_BAND_HALF_WIDTH = 0.35f
+    const val DEFAULT_HIGHLIGHT_ALPHA = 0.22f
+    const val BUTTON_HIGHLIGHT_ALPHA = 0.14f
+
+    // Breathe & pulse animation constants
+    const val BREATHE_DURATION_MS = 2200
+    const val BREATHE_MIN_SCALE = 0.98f
+    const val BREATHE_MAX_SCALE = 1.04f
+    const val PULSE_DURATION_MS = 1200
+    const val PULSE_MIN_SCALE = 0.95f
+    const val PULSE_MAX_SCALE = 1.05f
+
+    /** Validates that a pressed scale is within the sensible tactile range [0.80f..0.99f]. */
+    fun validateScale(scale: Float): Boolean = scale in 0.80f..0.99f
+
+    /** Calculates scale contraction delta from 1.0f idle. */
+    fun calculateScaleDelta(pressedScale: Float): Float = 1f - pressedScale
+
+    /** Resolves scale factor for a given semantic component type. */
+    fun resolveScale(type: TargetComponentType): Float = when (type) {
+        TargetComponentType.ICON_ACTION -> SCALE_ICON_ACTION
+        TargetComponentType.FAB -> SCALE_FAB
+        TargetComponentType.NAV_TAB -> SCALE_NAV_TAB
+        TargetComponentType.BUTTON -> SCALE_BUTTON
+        TargetComponentType.CARD -> SCALE_CARD
+        TargetComponentType.LIST_ITEM -> SCALE_LIST_ITEM
+        TargetComponentType.DEFAULT -> SCALE_DEFAULT
+    }
+
+    /** Calculates clamped entrance stagger delay for list and grid items. */
+    fun calculateStaggerDelay(index: Int, stepMs: Long = STAGGER_STEP_MS, maxIndex: Int = MAX_STAGGER_ITEMS): Long {
+        val clamped = index.coerceIn(0, maxIndex)
+        return clamped * stepMs
+    }
+
+    fun calculateStaggerDelayMs(index: Int): Long = calculateStaggerDelay(index)
+
+    /** Interpolates translation Y offset for staggered entrance motion. */
+    fun calculateTranslationY(progress: Float, offsetPx: Float): Float =
+        (1f - progress.coerceIn(0f, 1f)) * offsetPx
+
+    /** Interpolates alpha for staggered entrance motion. */
+    fun calculateAlpha(progress: Float): Float = progress.coerceIn(0f, 1f)
+
+    /** Calculates sweeping shimmer band horizontal boundaries based on component width and phase. */
+    fun calculateShimmerOffset(phase: Float, width: Float, bandRatio: Float = SHIMMER_BAND_HALF_WIDTH): Pair<Float, Float> {
+        val w = width.coerceAtLeast(1f)
+        val startX = w * phase - w * bandRatio
+        val endX = w * phase + w * bandRatio
+        return Pair(startX, endX)
+    }
+
+    fun calculateShimmerBand(width: Float, phase: Float, bandRatio: Float = SHIMMER_BAND_HALF_WIDTH): Pair<Float, Float> =
+        calculateShimmerOffset(phase, width, bandRatio)
+
+    /** Determines whether any portion of the shimmer band is within visible canvas bounds. */
+    fun isShimmerVisible(width: Float, phase: Float, bandRatio: Float = SHIMMER_BAND_HALF_WIDTH): Boolean {
+        val (startX, endX) = calculateShimmerBand(width, phase, bandRatio)
+        return endX > 0f && startX < width.coerceAtLeast(1f)
+    }
+
+    /** Interpolates breathing scale factor from normalized progress [0f..1f]. */
+    fun calculateBreatheScale(
+        progress: Float,
+        minScale: Float = BREATHE_MIN_SCALE,
+        maxScale: Float = BREATHE_MAX_SCALE
+    ): Float {
+        val clamped = progress.coerceIn(0f, 1f)
+        return minScale + (maxScale - minScale) * clamped
+    }
+
+    /** Detects whether coordinates (x, y) fall within bounding rectangle (0..width, 0..height). */
+    fun isWithinBounds(x: Float, y: Float, width: Float, height: Float): Boolean {
+        return x in 0f..width && y in 0f..height
+    }
+
+    /** Resolves GradientButton container alpha based on enabled state. */
+    fun resolveButtonAlpha(enabled: Boolean): Float =
+        if (enabled) 1f else 0.48f
+
+    /** Resolves GradientButton shadow elevation based on enabled and loading state. */
+    fun resolveButtonElevationDp(enabled: Boolean, loading: Boolean): Float =
+        if (enabled && !loading) 14f else 2f
+
+    /** Resolves specular rim highlight gradient alphas for GradientButton. */
+    fun resolveButtonRimBorderAlphas(enabled: Boolean): Pair<Float, Float> =
+        if (enabled) Pair(0.34f, 0.04f) else Pair(0.12f, 0.04f)
+
+    /** Resolves TonalPillButton container alpha based on enabled state. */
+    fun resolveTonalContainerAlpha(enabled: Boolean): Float =
+        if (enabled) 0.92f else 0.45f
+}
+
+/** Alias for EffectsPhysics providing full naming compatibility. */
+typealias EffectsMath = EffectsPhysics
+
 /**
  * Springy press feedback: the element shrinks slightly while a finger or mouse button is down and
  * bounces back on release. Observes pointer events without consuming them, so it composes with
  * clickable / combinedClickable / scrolling parents.
  */
-@Composable
-fun Modifier.pressScale(pressedScale: Float = 0.97f): Modifier {
+fun Modifier.pressScale(
+    pressedScale: Float = EffectsPhysics.SCALE_CARD
+): Modifier = this.composed {
     val scale = remember { Animatable(1f) }
-    return this
+    this
         .graphicsLayer {
             scaleX = scale.value
             scaleY = scale.value
@@ -71,12 +219,23 @@ fun Modifier.pressScale(pressedScale: Float = 0.97f): Modifier {
             coroutineScope {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    launch { scale.animateTo(pressedScale, spring(stiffness = Spring.StiffnessMedium)) }
+                    launch {
+                        scale.animateTo(
+                            pressedScale,
+                            spring(
+                                dampingRatio = EffectsPhysics.DAMPING_PRESS,
+                                stiffness = EffectsPhysics.STIFFNESS_PRESS
+                            )
+                        )
+                    }
                     waitForUpOrCancellation()
                     launch {
                         scale.animateTo(
                             1f,
-                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                            spring(
+                                dampingRatio = EffectsPhysics.DAMPING_RELEASE,
+                                stiffness = EffectsPhysics.STIFFNESS_RELEASE
+                            )
                         )
                     }
                 }
@@ -87,72 +246,151 @@ fun Modifier.pressScale(pressedScale: Float = 0.97f): Modifier {
 /**
  * Subtle staggered vertical glide + fade entrance for grid/list items.
  */
-@Composable
 fun Modifier.staggeredAppear(
     index: Int,
     offsetDp: Dp = 18.dp
-): Modifier {
+): Modifier = this.composed {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(index) {
-        val clamped = index.coerceIn(0, 8)
-        if (clamped > 0) delay(clamped * 36L)
+        val delayMs = EffectsPhysics.calculateStaggerDelay(index)
+        if (delayMs > 0) delay(delayMs)
         progress.animateTo(
             targetValue = 1f,
             animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
+                dampingRatio = EffectsPhysics.DAMPING_ENTRANCE,
+                stiffness = EffectsPhysics.STIFFNESS_ENTRANCE
             )
         )
     }
-    return this.graphicsLayer {
+    this.graphicsLayer {
         val v = progress.value
-        alpha = v
-        translationY = (1f - v) * offsetDp.toPx()
+        alpha = EffectsPhysics.calculateAlpha(v)
+        translationY = EffectsPhysics.calculateTranslationY(v, offsetDp.toPx())
     }
 }
 
 /**
  * Animated diagonal light sheen used for skeleton loading, active transfer progress, or hero buttons.
+ *
+ * Evaluates phase inside [onDrawWithContent] to eliminate draw cache invalidation and prevent
+ * repeated allocations during animation frames.
  */
-@Composable
 fun Modifier.shimmerSweep(
     enabled: Boolean = true,
-    highlightAlpha: Float = 0.22f
-): Modifier {
-    if (!enabled) return this
+    highlightAlpha: Float = EffectsPhysics.DEFAULT_HIGHLIGHT_ALPHA
+): Modifier = if (!enabled) this else this.composed {
     val transition = rememberInfiniteTransition(label = "shimmer")
     val phase by transition.animateFloat(
-        initialValue = -0.6f,
-        targetValue = 1.6f,
+        initialValue = EffectsPhysics.SHIMMER_PHASE_START,
+        targetValue = EffectsPhysics.SHIMMER_PHASE_END,
         animationSpec = infiniteRepeatable(
-            animation = tween(1900, easing = LinearEasing),
+            animation = tween(EffectsPhysics.SHIMMER_DURATION_MS, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "shimmerPhase"
     )
-    return this.drawWithCache {
+    this.drawWithCache {
         val width = size.width.coerceAtLeast(1f)
         val height = size.height.coerceAtLeast(1f)
-        val startX = width * phase - width * 0.35f
-        val endX = width * phase + width * 0.35f
-        val brush = Brush.linearGradient(
-            colors = listOf(
-                Color.Transparent,
-                Color.White.copy(alpha = highlightAlpha),
-                Color.Transparent
-            ),
-            start = Offset(startX, 0f),
-            end = Offset(endX, height)
+        val colors = listOf(
+            Color.Transparent,
+            Color.White.copy(alpha = highlightAlpha),
+            Color.Transparent
         )
         onDrawWithContent {
             drawContent()
-            drawRect(brush = brush)
+            val currentPhase = phase
+            if (EffectsPhysics.isShimmerVisible(width, currentPhase)) {
+                val (startX, endX) = EffectsPhysics.calculateShimmerOffset(currentPhase, width)
+                val brush = Brush.linearGradient(
+                    colors = colors,
+                    start = Offset(startX, 0f),
+                    end = Offset(endX, height)
+                )
+                drawRect(brush = brush)
+            }
         }
     }
 }
 
 /**
- * The CloudNest primary button: gradient fill, crisp specular rim, soft glow, press-scale and haptic tick.
+ * Reusable zero-recomposition breathing animation for hero elements, avatars, and floating badges.
+ */
+fun Modifier.breathe(
+    enabled: Boolean = true,
+    minScale: Float = EffectsPhysics.BREATHE_MIN_SCALE,
+    maxScale: Float = EffectsPhysics.BREATHE_MAX_SCALE,
+    durationMs: Int = EffectsPhysics.BREATHE_DURATION_MS
+): Modifier = if (!enabled) this else this.composed {
+    val transition = rememberInfiniteTransition(label = "breathe")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMs, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breatheProgress"
+    )
+    this.graphicsLayer {
+        val s = EffectsPhysics.calculateBreatheScale(progress, minScale, maxScale)
+        scaleX = s
+        scaleY = s
+    }
+}
+
+/**
+ * Reusable zero-recomposition pulsating animation for transfer status, badges, and alerts.
+ */
+fun Modifier.pulsate(
+    enabled: Boolean = true,
+    minScale: Float = EffectsPhysics.PULSE_MIN_SCALE,
+    maxScale: Float = EffectsPhysics.PULSE_MAX_SCALE,
+    durationMs: Int = EffectsPhysics.PULSE_DURATION_MS
+): Modifier = if (!enabled) this else this.composed {
+    val transition = rememberInfiniteTransition(label = "pulsate")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMs, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulsateProgress"
+    )
+    this.graphicsLayer {
+        val s = minScale + (maxScale - minScale) * progress
+        scaleX = s
+        scaleY = s
+    }
+}
+
+/**
+ * Reusable composite tactile modifier combining press scale, desktop pointer hand cursor,
+ * haptic tick, and click listener.
+ */
+fun Modifier.tactileClickable(
+    enabled: Boolean = true,
+    scale: Float = EffectsPhysics.SCALE_CARD,
+    onClick: () -> Unit
+): Modifier = this.composed {
+    val haptics = LocalHapticFeedback.current
+    this
+        .pressScale(scale)
+        .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default)
+        .clickable(
+            enabled = enabled,
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null
+        ) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        }
+}
+
+/**
+ * The CloudNest primary button: gradient fill, crisp specular rim, soft glow, press-scale,
+ * desktop pointer hand icon, and haptic tick.
  */
 @Composable
 fun GradientButton(
@@ -166,25 +404,29 @@ fun GradientButton(
 ) {
     val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(20.dp)
-    val alpha = if (enabled) 1f else 0.48f
+    val alpha = EffectsPhysics.resolveButtonAlpha(enabled)
+    val elevationDp = EffectsPhysics.resolveButtonElevationDp(enabled, loading)
+    val (topBorderAlpha, bottomBorderAlpha) = EffectsPhysics.resolveButtonRimBorderAlphas(enabled)
+
     Box(
         modifier = modifier
-            .pressScale(0.965f)
+            .pressScale(EffectsPhysics.BUTTON_PRESSED_SCALE)
+            .pointerHoverIcon(if (enabled && !loading) PointerIcon.Hand else PointerIcon.Default)
             .shadow(
-                elevation = if (enabled && !loading) 14.dp else 2.dp,
+                elevation = elevationDp.dp,
                 shape = shape,
                 ambientColor = colors.first().copy(alpha = 0.55f),
                 spotColor = colors.last().copy(alpha = 0.55f)
             )
             .clip(shape)
             .background(Brush.horizontalGradient(colors.map { it.copy(alpha = alpha) }))
-            .shimmerSweep(enabled = enabled && !loading, highlightAlpha = 0.14f)
+            .shimmerSweep(enabled = enabled && !loading, highlightAlpha = EffectsPhysics.BUTTON_HIGHLIGHT_ALPHA)
             .border(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     listOf(
-                        Color.White.copy(alpha = if (enabled) 0.34f else 0.12f),
-                        Color.White.copy(alpha = 0.04f)
+                        Color.White.copy(alpha = topBorderAlpha),
+                        Color.White.copy(alpha = bottomBorderAlpha)
                     )
                 ),
                 shape = shape
@@ -225,7 +467,8 @@ fun GradientButton(
 }
 
 /**
- * Refined secondary tonal pill button matching [GradientButton] geometry and press physics.
+ * Refined secondary tonal pill button matching [GradientButton] geometry, desktop pointer hand icon,
+ * and press physics.
  */
 @Composable
 fun TonalPillButton(
@@ -239,11 +482,14 @@ fun TonalPillButton(
 ) {
     val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(18.dp)
+    val containerAlpha = EffectsPhysics.resolveTonalContainerAlpha(enabled)
+
     Box(
         modifier = modifier
-            .pressScale(0.965f)
+            .pressScale(EffectsPhysics.BUTTON_PRESSED_SCALE)
+            .pointerHoverIcon(if (enabled) PointerIcon.Hand else PointerIcon.Default)
             .clip(shape)
-            .background(containerColor.copy(alpha = if (enabled) 0.92f else 0.45f))
+            .background(containerColor.copy(alpha = containerAlpha))
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),

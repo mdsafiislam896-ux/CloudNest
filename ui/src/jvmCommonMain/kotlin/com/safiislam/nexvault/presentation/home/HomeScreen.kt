@@ -59,10 +59,42 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.OfflinePin
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import com.safiislam.nexvault.presentation.components.EffectsPhysics
+import com.safiislam.nexvault.domain.model.DesignStyle
+import com.safiislam.nexvault.domain.model.DriveFile
 import com.safiislam.nexvault.domain.model.DriveFolder
+import com.safiislam.nexvault.presentation.components.CloudPlatform3D
+import com.safiislam.nexvault.presentation.components.FileActionId
+import com.safiislam.nexvault.presentation.components.FileContextAction
+import com.safiislam.nexvault.presentation.components.FileContextSheet
+import com.safiislam.nexvault.presentation.components.FileContextSheetLogic
+import com.safiislam.nexvault.presentation.components.FileInfoSheet
 import com.safiislam.nexvault.presentation.components.FolderGridItem
 import com.safiislam.nexvault.presentation.components.RenameDialog
+import com.safiislam.nexvault.presentation.components.StorageArcGauge
+import com.safiislam.nexvault.presentation.files.FolderPickerHost
+import com.safiislam.nexvault.presentation.platform.LocalFileRevealer
+import com.safiislam.nexvault.presentation.platform.LocalFileSharer
+import com.safiislam.nexvault.presentation.theme.LocalDesignStyle
+import com.safiislam.nexvault.resources.common_move_trash
+import com.safiislam.nexvault.resources.files_copy_here
+import com.safiislam.nexvault.resources.files_copy_to
+import com.safiislam.nexvault.resources.files_move_here
+import com.safiislam.nexvault.resources.files_move_to
+import com.safiislam.nexvault.resources.preview_share_chooser_title
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
@@ -252,6 +284,19 @@ fun HomeScreen(
     var activeCategorySheet by remember { mutableStateOf<FileCategory?>(null) }
     var showDuplicateFinderSheet by remember { mutableStateOf(false) }
     var showStorageAnalyzerSheet by remember { mutableStateOf(false) }
+    var contextSheetFile by remember { mutableStateOf<DriveFile?>(null) }
+    var confirmTrashFile by remember { mutableStateOf<DriveFile?>(null) }
+    var renameTargetFile by remember { mutableStateOf<DriveFile?>(null) }
+    var infoTargetFile by remember { mutableStateOf<DriveFile?>(null) }
+    var showMovePicker by remember { mutableStateOf(false) }
+    var showCopyPicker by remember { mutableStateOf(false) }
+    var moveTargetFile by remember { mutableStateOf<DriveFile?>(null) }
+    var copyTargetFile by remember { mutableStateOf<DriveFile?>(null) }
+    val fileSharer = LocalFileSharer.current
+    val fileRevealer = LocalFileRevealer.current
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val shareChooserTitle = stringResource(Res.string.preview_share_chooser_title)
     val favoriteFiles by remember { viewModel.observeFavoriteFiles() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
@@ -602,11 +647,21 @@ fun HomeScreen(
                     lastConnectionStatus = status ?: lastConnectionStatus
                 },
                 actions = {
-                    IconButton(onClick = onOpenSearch) {
+                    IconButton(
+                        onClick = onOpenSearch,
+                        modifier = Modifier
+                            .pressScale(EffectsPhysics.SCALE_ICON_ACTION)
+                            .pointerHoverIcon(PointerIcon.Hand)
+                    ) {
                         Icon(Icons.Filled.Search, contentDescription = "Search")
                     }
                     if (state.appLockEnabled) {
-                        IconButton(onClick = viewModel::lockNow) {
+                        IconButton(
+                            onClick = viewModel::lockNow,
+                            modifier = Modifier
+                                .pressScale(EffectsPhysics.SCALE_ICON_ACTION)
+                                .pointerHoverIcon(PointerIcon.Hand)
+                        ) {
                             Icon(
                                 Icons.Filled.Lock,
                                 contentDescription = stringResource(Res.string.home_lock_app)
@@ -617,7 +672,10 @@ fun HomeScreen(
                         val driveCount by viewModel.driveCount.collectAsStateWithLifecycle()
                         IconButton(
                             onClick = onOpenChannels,
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .pressScale(EffectsPhysics.SCALE_ICON_ACTION)
+                                .pointerHoverIcon(PointerIcon.Hand)
                         ) {
                             DriveAvatarSwitcher(
                                 channel = channel,
@@ -762,15 +820,33 @@ fun HomeScreen(
                 }
             }
             item {
-                HeroStorageCard(
-                    name = state.activeChannel?.displayName ?: "CloudNest",
-                    totalFiles = state.totalFiles,
-                    totalBytes = state.remoteBytes,
-                    backedUpPercent = if (state.totalFiles <= 0) 100 else (state.backedUpCount * 100 / state.totalFiles).coerceIn(0, 100),
-                    slices = state.storage,
-                    onClick = { showStorageAnalyzerSheet = true },
-                    modifier = Modifier.staggeredAppear(1)
-                )
+                val totalQuotaBytes = calculateStorageQuota(state.remoteBytes)
+                val designStyle = LocalDesignStyle.current
+
+                when (designStyle) {
+                    DesignStyle.LAVENDER_3D -> {
+                        Lavender3DStorageHero(
+                            channelName = state.activeChannel?.displayName ?: "CloudNest Vault",
+                            usedBytes = state.remoteBytes,
+                            totalBytes = totalQuotaBytes,
+                            slices = state.storage,
+                            totalFiles = state.totalFiles,
+                            onClick = { showStorageAnalyzerSheet = true },
+                            modifier = Modifier.staggeredAppear(1)
+                        )
+                    }
+                    else -> { // AMOLED_NEON, COLORFUL, IOS_GLASS, WARM
+                        AmoledStorageArcHero(
+                            channelName = state.activeChannel?.displayName ?: "CloudNest Vault",
+                            usedBytes = state.remoteBytes,
+                            totalBytes = totalQuotaBytes,
+                            slices = state.storage,
+                            totalFiles = state.totalFiles,
+                            onClick = { showStorageAnalyzerSheet = true },
+                            modifier = Modifier.staggeredAppear(1)
+                        )
+                    }
+                }
             }
             item {
                 // Quick Actions Dock
@@ -811,126 +887,139 @@ fun HomeScreen(
                 }
             }
             if (state.favoriteFolders.isNotEmpty() || favoriteFiles.isNotEmpty()) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Filled.PushPin,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFFB800),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = "Pinned Workspace",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Text(
-                                text = "${state.favoriteFolders.size + favoriteFiles.size} pinned",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(state.favoriteFolders, key = { "pin-folder-${it.id}" }) { folder ->
-                                val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                                Row(
-                                    modifier = Modifier
-                                        .pressScale(0.96f)
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(if (dark) Color(0xFF1E1E26) else Color.White)
-                                        .border(
-                                            1.dp,
-                                            Brush.verticalGradient(
-                                                listOf(Color(0xFFFFB800).copy(alpha = 0.5f), Color.White.copy(alpha = 0.08f))
-                                            ),
-                                            RoundedCornerShape(18.dp)
-                                        )
-                                        .clickable { onOpenFolder(folder.id) }
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                if (state.favoriteFolders.isNotEmpty()) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Filled.Folder,
+                                        imageVector = Icons.Filled.PushPin,
                                         contentDescription = null,
                                         tint = Color(0xFFFFB800),
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    Spacer(Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = folder.name,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "Pinned Folders",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = "${state.favoriteFolders.size} folders",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            val folderChunks = state.favoriteFolders.chunked(2)
+                            folderChunks.forEach { pair ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    pair.forEach { folder ->
+                                        FolderGridItem(
+                                            folder = folder,
+                                            onClick = { onOpenFolder(folder.id) },
+                                            onLongClick = {},
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        Text(
-                                            text = "Folder",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontSize = 10.sp
-                                        )
+                                    }
+                                    if (pair.size == 1) {
+                                        Spacer(Modifier.weight(1f))
                                     }
                                 }
                             }
-                            items(favoriteFiles.take(8), key = { "pin-file-${it.id}" }) { file ->
-                                val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                                Row(
-                                    modifier = Modifier
-                                        .pressScale(0.96f)
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(if (dark) Color(0xFF1E1E26) else Color.White)
-                                        .border(
-                                            1.dp,
-                                            Brush.verticalGradient(
-                                                listOf(Color(0xFF7C5CFC).copy(alpha = 0.5f), Color.White.copy(alpha = 0.08f))
-                                            ),
-                                            RoundedCornerShape(18.dp)
-                                        )
-                                        .clickable {
-                                            onOpenFile(
-                                                file.id,
-                                                PreviewSequence(
-                                                    favoritesOnly = true,
-                                                    sortField = FileSortField.DATE_MODIFIED,
-                                                    sortDirection = SortDirection.DESCENDING
-                                                )
-                                            )
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                        }
+                    }
+                }
+                if (favoriteFiles.isNotEmpty()) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = Icons.Filled.Star,
                                         contentDescription = null,
                                         tint = Color(0xFFFFD54F),
                                         modifier = Modifier.size(18.dp)
                                     )
-                                    Spacer(Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = file.name.take(22),
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "Pinned Files",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = "${favoriteFiles.size} files",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(favoriteFiles.take(8), key = { "pin-file-${it.id}" }) { file ->
+                                    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                                    Row(
+                                        modifier = Modifier
+                                            .pressScale(0.96f)
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .background(if (dark) Color(0xFF1E1E26) else Color.White)
+                                            .border(
+                                                1.dp,
+                                                Brush.verticalGradient(
+                                                    listOf(Color(0xFF7C5CFC).copy(alpha = 0.5f), Color.White.copy(alpha = 0.08f))
+                                                ),
+                                                RoundedCornerShape(18.dp)
+                                            )
+                                            .clickable {
+                                                onOpenFile(
+                                                    file.id,
+                                                    PreviewSequence(
+                                                        favoritesOnly = true,
+                                                        sortField = FileSortField.DATE_MODIFIED,
+                                                        sortDirection = SortDirection.DESCENDING
+                                                    )
+                                                )
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Star,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFD54F),
+                                            modifier = Modifier.size(18.dp)
                                         )
-                                        Text(
-                                            text = Formatters.bytes(file.sizeBytes),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontSize = 10.sp
-                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = file.name.take(22),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                text = Formatters.bytes(file.sizeBytes),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 10.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -951,71 +1040,11 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-            }
-            item {
-                val videoSlice = state.storage.firstOrNull { it.category == FileCategory.VIDEO }
-                val musicSlice = state.storage.firstOrNull { it.category == FileCategory.AUDIO }
-                val docSlice = state.storage.firstOrNull { it.category == FileCategory.DOCUMENT }
-                val photoSlice = state.storage.firstOrNull { it.category == FileCategory.IMAGE }
-
-                val videoCount = videoSlice?.fileCount ?: 0
-                val musicCount = musicSlice?.fileCount ?: 0
-                val docCount = docSlice?.fileCount ?: 0
-                val photoCount = photoSlice?.fileCount ?: 0
-
-                val videoPct = if (state.totalFiles > 0) (videoCount * 100 / state.totalFiles) else 0
-                val musicPct = if (state.totalFiles > 0) (musicCount * 100 / state.totalFiles) else 0
-                val docPct = if (state.totalFiles > 0) (docCount * 100 / state.totalFiles) else 0
-                val photoPct = if (state.totalFiles > 0) (photoCount * 100 / state.totalFiles) else 0
-
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        CategoryPillCard(
-                            title = "🎬 Videos",
-                            stat = if (state.totalFiles > 0) "$videoPct%" else "$videoCount files",
-                            sub = "$videoCount files • ${Formatters.bytes(videoSlice?.totalBytes ?: 0L)}",
-                            icon = Icons.Outlined.VideoFile,
-                            containerColor = Color(0xFFE65100).copy(alpha = 0.88f),
-                            onClick = { activeCategorySheet = FileCategory.VIDEO },
-                            modifier = Modifier.weight(1f)
-                        )
-                        CategoryPillCard(
-                            title = "🎵 Music",
-                            stat = if (state.totalFiles > 0) "$musicPct%" else "$musicCount files",
-                            sub = "$musicCount files • ${Formatters.bytes(musicSlice?.totalBytes ?: 0L)}",
-                            icon = Icons.Outlined.AudioFile,
-                            containerColor = Color(0xFFC2185B).copy(alpha = 0.88f),
-                            onClick = { activeCategorySheet = FileCategory.AUDIO },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        CategoryPillCard(
-                            title = "📄 Documents",
-                            stat = if (state.totalFiles > 0) "$docPct%" else "$docCount files",
-                            sub = "$docCount files • ${Formatters.bytes(docSlice?.totalBytes ?: 0L)}",
-                            icon = Icons.Outlined.Description,
-                            containerColor = Color(0xFF00897B).copy(alpha = 0.88f),
-                            onClick = { activeCategorySheet = FileCategory.DOCUMENT },
-                            modifier = Modifier.weight(1f)
-                        )
-                        CategoryPillCard(
-                            title = "🖼️ Photos",
-                            stat = if (state.totalFiles > 0) "$photoPct%" else "$photoCount files",
-                            sub = "$photoCount files • ${Formatters.bytes(photoSlice?.totalBytes ?: 0L)}",
-                            icon = Icons.Outlined.Image,
-                            containerColor = Color(0xFF5E35B1).copy(alpha = 0.88f),
-                            onClick = { activeCategorySheet = FileCategory.IMAGE },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
+                Spacer(Modifier.height(10.dp))
+                CategoryTiles(
+                    slices = state.storage,
+                    onCategoryClick = { category -> activeCategorySheet = category }
+                )
             }
             item {
                 Text(
@@ -1134,7 +1163,8 @@ fun HomeScreen(
                                             )
                                         )
                                     },
-                                    onLongClick = {}
+                                    onLongClick = { contextSheetFile = file },
+                                    onMenuClick = { contextSheetFile = file }
                                 )
                             }
                         }
@@ -1159,6 +1189,147 @@ fun HomeScreen(
                 )
             }
         }
+    }
+
+    // ── Folder Picker for Move and Copy (Design Reference 2) ─────────────────────
+    if (showMovePicker || showCopyPicker) {
+        val moving = showMovePicker
+        val target = if (moving) moveTargetFile else copyTargetFile
+        FolderPickerHost(
+            title = stringResource(
+                if (moving) Res.string.files_move_to else Res.string.files_copy_to
+            ),
+            confirmLabel = stringResource(
+                if (moving) Res.string.files_move_here else Res.string.files_copy_here
+            ),
+            loadChildren = viewModel::childFolders,
+            createFolder = viewModel::createFolderIn,
+            excludedFolderIds = emptySet(),
+            onConfirm = { targetFolderId ->
+                showMovePicker = false
+                showCopyPicker = false
+                if (target != null) {
+                    if (moving) {
+                        viewModel.moveFile(target.id, targetFolderId)
+                        moveTargetFile = null
+                    } else {
+                        viewModel.copyFile(target.id, targetFolderId)
+                        copyTargetFile = null
+                    }
+                }
+            },
+            onDismiss = {
+                showMovePicker = false
+                showCopyPicker = false
+                moveTargetFile = null
+                copyTargetFile = null
+            }
+        )
+    }
+
+    // ── Recent File Context Sheet (Design Reference 2 & 3) ───────────────────────
+    contextSheetFile?.let { file ->
+        val actions = FileContextSheetLogic.resolveActions(
+            file = file,
+            isLocalRevealerAvailable = fileRevealer != null,
+            onAction = { actionId ->
+                contextSheetFile = null
+                when (actionId) {
+                    FileActionId.SEND_LINK -> {
+                        val link = FileContextSheetLogic.buildTelegramDeepLink(file.chatId, file.messageId)
+                        if (link != null) {
+                            clipboardManager.setText(AnnotatedString(link))
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Cloud link copied to clipboard")
+                            }
+                        } else {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Upload file to Telegram cloud first to generate link")
+                            }
+                        }
+                    }
+                    FileActionId.SEND_FILE -> {
+                        val path = file.localPath
+                        if (path != null) {
+                            fileSharer.share(listOf(path), file.mimeType, shareChooserTitle)
+                        } else {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Download file first to share")
+                            }
+                        }
+                    }
+                    FileActionId.MAKE_AVAILABLE_OFFLINE -> {
+                        viewModel.setAvailableOffline(file, !file.isAvailableOffline)
+                    }
+                    FileActionId.SHOW_LOCATION -> {
+                        val path = file.localPath
+                        if (fileRevealer != null && path != null) {
+                            val revealed = fileRevealer.reveal(path)
+                            if (!revealed) {
+                                infoTargetFile = file
+                            }
+                        } else {
+                            infoTargetFile = file
+                        }
+                    }
+                    FileActionId.MOVE -> {
+                        moveTargetFile = file
+                        showMovePicker = true
+                    }
+                    FileActionId.RENAME -> {
+                        renameTargetFile = file
+                    }
+                    FileActionId.COPY -> {
+                        copyTargetFile = file
+                        showCopyPicker = true
+                    }
+                    FileActionId.DELETE -> {
+                        confirmTrashFile = file
+                    }
+                }
+            }
+        )
+
+        FileContextSheet(
+            visible = true,
+            onDismiss = { contextSheetFile = null },
+            file = file,
+            actions = actions
+        )
+    }
+
+    // ── Delete Confirmation Dialog ───────────────────────────────────────────────
+    confirmTrashFile?.let { file ->
+        ConfirmDialog(
+            title = "Move to Trash",
+            message = "Move \"${file.name}\" to Cloud Trash?",
+            confirmLabel = stringResource(Res.string.common_move_trash),
+            destructive = true,
+            onConfirm = {
+                viewModel.moveToTrash(listOf(file.id))
+                confirmTrashFile = null
+            },
+            onDismiss = { confirmTrashFile = null }
+        )
+    }
+
+    // ── Rename Dialog ────────────────────────────────────────────────────────────
+    renameTargetFile?.let { file ->
+        RenameDialog(
+            title = "Rename File",
+            initialValue = file.name,
+            confirmLabel = "Rename",
+            onConfirm = { newName ->
+                viewModel.renameFile(file.id, newName)
+                renameTargetFile = null
+            },
+            onDismiss = { renameTargetFile = null }
+        )
+    }
+
+    // ── File Info Sheet ──────────────────────────────────────────────────────────
+    infoTargetFile?.let { file ->
+        FileInfoSheet(file = file, onDismiss = { infoTargetFile = null })
     }
 }
 
@@ -1230,6 +1401,8 @@ private fun CollectionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .pressScale(EffectsPhysics.SCALE_LIST_ITEM)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1710,7 +1883,8 @@ private fun QuickActionTile(
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     Column(
         modifier = modifier
-            .pressScale(0.94f)
+            .pressScale(EffectsPhysics.SCALE_CARD)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clip(RoundedCornerShape(20.dp))
             .background(
                 if (dark) MaterialTheme.colorScheme.surfaceContainerHigh
@@ -1782,7 +1956,8 @@ private fun HeroStorageCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .pressScale(0.985f)
+            .pressScale(EffectsPhysics.SCALE_CARD)
+            .pointerHoverIcon(PointerIcon.Hand)
             .shadow(
                 elevation = 16.dp,
                 shape = RoundedCornerShape(32.dp),
@@ -1941,6 +2116,200 @@ private fun HeroStorageCard(
     }
 }
 
+internal fun calculateStorageQuota(usedBytes: Long): Long {
+    val tier15GB = 15L * 1024 * 1024 * 1024
+    val tier50GB = 50L * 1024 * 1024 * 1024
+    val tier100GB = 100L * 1024 * 1024 * 1024
+    val tier500GB = 500L * 1024 * 1024 * 1024
+    val tier1TB = 1024L * 1024 * 1024 * 1024
+    return when {
+        usedBytes > tier500GB -> tier1TB
+        usedBytes > tier100GB -> tier500GB
+        usedBytes > tier50GB -> tier100GB
+        usedBytes > tier15GB -> tier50GB
+        else -> tier15GB
+    }
+}
+
+@Composable
+private fun AmoledStorageArcHero(
+    channelName: String,
+    usedBytes: Long,
+    totalBytes: Long,
+    slices: List<StorageSlice>,
+    totalFiles: Int,
+    onClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val isAmoled = LocalDesignStyle.current == DesignStyle.AMOLED_NEON
+    val cardBg = if (isAmoled) Color(0xFF0C0D12) else MaterialTheme.colorScheme.surfaceContainer
+    val borderColor = if (isAmoled) Color(0xFF7C5CFC).copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .pressScale(EffectsPhysics.SCALE_CARD)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clip(RoundedCornerShape(32.dp))
+            .background(cardBg)
+            .border(1.dp, borderColor, RoundedCornerShape(32.dp))
+            .clickable(onClick = onClick)
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Top Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF7C5CFC).copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CloudNestMark(size = 32.dp, animated = true)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = channelName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "$totalFiles files stored",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFF38D39F).copy(alpha = 0.18f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Sync Active",
+                    color = Color(0xFF38D39F),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Circular Arc Gauge
+        StorageArcGauge(
+            usedBytes = usedBytes,
+            totalBytes = totalBytes,
+            categoryBytes = slices.associate { it.category to it.totalBytes },
+            gaugeSize = 210.dp,
+            strokeWidth = 20.dp,
+            showMetrics = true,
+            onClick = onClick
+        )
+    }
+}
+
+@Composable
+private fun Lavender3DStorageHero(
+    channelName: String,
+    usedBytes: Long,
+    totalBytes: Long,
+    slices: List<StorageSlice>,
+    totalFiles: Int,
+    onClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val cardBg = if (dark) Color(0xFF1F1A2E) else Color(0xFFF6F3FE)
+    val ratio = if (totalBytes > 0) (usedBytes.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .pressScale(EffectsPhysics.SCALE_CARD)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .shadow(
+                elevation = 14.dp,
+                shape = RoundedCornerShape(32.dp),
+                ambientColor = Color(0xFF7657F6).copy(alpha = 0.20f),
+                spotColor = Color(0xFF7657F6).copy(alpha = 0.35f)
+            )
+            .clip(RoundedCornerShape(32.dp))
+            .background(cardBg)
+            .border(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(Color(0xFFA478FF).copy(alpha = 0.45f), Color(0xFFA478FF).copy(alpha = 0.08f))
+                ),
+                RoundedCornerShape(32.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 3D Floating Cloud Illustration
+        CloudPlatform3D(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        // "My Storage" Header & Progress
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "My Storage",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "${Formatters.bytes(usedBytes)} of ${Formatters.bytes(totalBytes)}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Linear Progress Bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFFA478FF).copy(alpha = 0.22f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(ratio.coerceAtLeast(0.03f))
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF7657F6), Color(0xFFA478FF), Color(0xFF3FF4F7))
+                        )
+                    )
+            )
+        }
+    }
+}
+
 @Composable
 private fun CategoryPillCard(
     title: String,
@@ -1954,7 +2323,8 @@ private fun CategoryPillCard(
     val endTone = androidx.compose.ui.graphics.lerp(containerColor, Color.Black, 0.28f)
     Column(
         modifier = modifier
-            .pressScale(0.955f)
+            .pressScale(EffectsPhysics.SCALE_CARD)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clip(RoundedCornerShape(24.dp))
             .background(Brush.linearGradient(listOf(containerColor, endTone)))
             .border(
@@ -2022,7 +2392,8 @@ private fun PowerToolCard(
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     Column(
         modifier = modifier
-            .pressScale(0.955f)
+            .pressScale(EffectsPhysics.SCALE_CARD)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clip(RoundedCornerShape(22.dp))
             .background(if (dark) MaterialTheme.colorScheme.surfaceContainerHigh else Color.White)
             .border(

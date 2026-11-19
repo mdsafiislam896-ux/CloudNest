@@ -31,6 +31,9 @@ object Formatters {
     fun percent(fraction: Float): String =
         "${(fraction.coerceIn(0f, 1f) * 100).roundToInt()}%"
 
+    fun formatPercent(usedBytes: Long, totalBytes: Long): String =
+        if (totalBytes <= 0L) "0%" else "${((usedBytes.toDouble() / totalBytes.toDouble()).coerceIn(0.0, 1.0) * 100).roundToInt()}%"
+
     fun date(epochMillis: Long): String =
         DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(epochMillis))
 

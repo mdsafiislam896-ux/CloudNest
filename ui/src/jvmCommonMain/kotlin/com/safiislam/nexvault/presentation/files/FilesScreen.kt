@@ -33,8 +33,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import com.safiislam.nexvault.presentation.components.EffectsPhysics
+import com.safiislam.nexvault.presentation.components.pressScale
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -137,8 +142,12 @@ import com.safiislam.nexvault.presentation.components.BlockingProgressDialog
 import com.safiislam.nexvault.presentation.components.BottomBarSnackbarHost
 import com.safiislam.nexvault.presentation.components.ConfirmDialog
 import com.safiislam.nexvault.presentation.components.EmptyState
+import com.safiislam.nexvault.presentation.components.FileActionId
 import com.safiislam.nexvault.presentation.components.FileContextAction
 import com.safiislam.nexvault.presentation.components.FileContextSheet
+import com.safiislam.nexvault.presentation.components.FileContextSheetLogic
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import com.safiislam.nexvault.presentation.components.FileGridItem
 import com.safiislam.nexvault.presentation.components.SortMenu
 import com.safiislam.nexvault.presentation.components.FileInfoSheet
@@ -612,7 +621,12 @@ fun FilesScreen(
                             },
                             navigationIcon = {
                                 onBack?.let {
-                                    IconButton(onClick = it) {
+                                    IconButton(
+                                        onClick = it,
+                                        modifier = Modifier
+                                            .pressScale(EffectsPhysics.SCALE_ICON_ACTION)
+                                            .pointerHoverIcon(PointerIcon.Hand)
+                                    ) {
                                         Icon(
                                             Icons.AutoMirrored.Filled.ArrowBack,
                                             contentDescription = stringResource(Res.string.common_back)
@@ -623,27 +637,45 @@ fun FilesScreen(
                             actions = {
                                 Box(
                                     modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .pressScale(EffectsPhysics.SCALE_ICON_ACTION)
+                                        .pointerHoverIcon(PointerIcon.Hand)
                                         .clickable { onOpenSearch() },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        Icons.Filled.Search,
-                                        contentDescription = stringResource(Res.string.files_search),
-                                        modifier = Modifier.size(20.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Search,
+                                            contentDescription = stringResource(Res.string.files_search),
+                                            modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                 }
                                 Spacer(Modifier.width(4.dp))
-                                IconButton(onClick = { showCreateFolder = true }) {
+                                IconButton(
+                                    onClick = { showCreateFolder = true },
+                                    modifier = Modifier
+                                        .pressScale(EffectsPhysics.SCALE_ICON_ACTION)
+                                        .pointerHoverIcon(PointerIcon.Hand)
+                                ) {
                                     Icon(
                                         Icons.Filled.CreateNewFolder,
                                         contentDescription = stringResource(Res.string.files_new_folder)
                                     )
                                 }
-                                IconButton(onClick = { showSortMenu = true }) {
+                                IconButton(
+                                    onClick = { showSortMenu = true },
+                                    modifier = Modifier
+                                        .pressScale(EffectsPhysics.SCALE_ICON_ACTION)
+                                        .pointerHoverIcon(PointerIcon.Hand)
+                                ) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.Sort,
                                         contentDescription = stringResource(Res.string.files_sort)
@@ -943,6 +975,8 @@ fun FilesScreen(
     }
 
     val fileSharer = LocalFileSharer.current
+    val fileRevealer = LocalFileRevealer.current
+    val clipboardManager = LocalClipboardManager.current
     val shareChooserTitle = stringResource(Res.string.preview_share_chooser_title)
     LaunchedEffect(Unit) {
         viewModel.shareRequests.collect { request ->
@@ -971,67 +1005,87 @@ fun FilesScreen(
         FileInfoSheet(file = file, onDismiss = viewModel::dismissInfo)
     }
 
-    // ── Premium per-file context sheet ──────────────────────────────────────────
+    // ── Premium per-file context sheet (Design Reference 2) ─────────────────────
     contextSheetFile?.let { file ->
+        val actions = FileContextSheetLogic.resolveActions(
+            file = file,
+            isLocalRevealerAvailable = fileRevealer != null,
+            onAction = { actionId ->
+                contextSheetFile = null
+                when (actionId) {
+                    FileActionId.SEND_LINK -> {
+                        val link = FileContextSheetLogic.buildTelegramDeepLink(file.chatId, file.messageId)
+                        if (link != null) {
+                            clipboardManager.setText(AnnotatedString(link))
+                            feedbackScope.launch {
+                                snackbarHostState.showSnackbar("Cloud link copied to clipboard")
+                            }
+                        } else {
+                            feedbackScope.launch {
+                                snackbarHostState.showSnackbar("Upload file to Telegram cloud first to generate link")
+                            }
+                        }
+                    }
+                    FileActionId.SEND_FILE -> {
+                        if (file.localPath != null) {
+                            viewModel.clearSelection()
+                            viewModel.toggleSelection(file.id)
+                            viewModel.shareSelected()
+                        } else {
+                            feedbackScope.launch {
+                                snackbarHostState.showSnackbar("Download file first to share")
+                            }
+                        }
+                    }
+                    FileActionId.MAKE_AVAILABLE_OFFLINE -> {
+                        viewModel.clearSelection()
+                        viewModel.toggleSelection(file.id)
+                        viewModel.setSelectedAvailableOffline(!file.isAvailableOffline)
+                    }
+                    FileActionId.SHOW_LOCATION -> {
+                        val path = file.localPath
+                        if (fileRevealer != null && path != null) {
+                            val revealed = fileRevealer.reveal(path)
+                            if (!revealed) {
+                                viewModel.clearSelection()
+                                viewModel.toggleSelection(file.id)
+                                viewModel.showInfoForSelection()
+                            }
+                        } else {
+                            viewModel.clearSelection()
+                            viewModel.toggleSelection(file.id)
+                            viewModel.showInfoForSelection()
+                        }
+                    }
+                    FileActionId.MOVE -> {
+                        viewModel.clearSelection()
+                        viewModel.toggleSelection(file.id)
+                        showMovePicker = true
+                    }
+                    FileActionId.RENAME -> {
+                        viewModel.clearSelection()
+                        viewModel.toggleSelection(file.id)
+                        viewModel.requestRenameSelected()
+                    }
+                    FileActionId.COPY -> {
+                        viewModel.clearSelection()
+                        viewModel.toggleSelection(file.id)
+                        showCopyPicker = true
+                    }
+                    FileActionId.DELETE -> {
+                        viewModel.clearSelection()
+                        viewModel.toggleSelection(file.id)
+                        confirmTrashContextItem = true
+                    }
+                }
+            }
+        )
+
         FileContextSheet(
             visible = true,
             onDismiss = { contextSheetFile = null },
-            title = file.name,
-            subtitle = "${com.safiislam.nexvault.presentation.common.Formatters.bytes(file.sizeBytes)} • ${com.safiislam.nexvault.presentation.common.Formatters.date(file.modifiedAt)}",
-            thumbnailContent = {
-                FileThumbnail(
-                    file = file,
-                    cleanFileMode = true,
-                    contentDescription = null,
-                    modifier = androidx.compose.ui.Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                )
-            },
-            actions = buildList {
-                add(FileContextAction(Icons.Filled.Share, "Share") {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    viewModel.shareSelected()
-                })
-                add(FileContextAction(Icons.Filled.Download, "Download") {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    viewModel.downloadSelected()
-                })
-                add(FileContextAction(Icons.Filled.OfflinePin,
-                    if (file.isAvailableOffline) "Remove offline" else "Make offline"
-                ) {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    viewModel.setSelectedAvailableOffline(!file.isAvailableOffline)
-                })
-                add(FileContextAction(Icons.Filled.DriveFileRenameOutline, "Rename") {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    viewModel.requestRenameSelected()
-                })
-                add(FileContextAction(Icons.AutoMirrored.Filled.DriveFileMove, "Move") {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    showMovePicker = true
-                })
-                add(FileContextAction(Icons.Filled.ContentCopy, "Copy") {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    showCopyPicker = true
-                })
-                add(FileContextAction(Icons.Outlined.Info, "Details") {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    viewModel.showInfoForSelection()
-                })
-                add(FileContextAction(Icons.Filled.DeleteOutline, "Delete", destructive = true) {
-                    contextSheetFile = null
-                    viewModel.toggleSelection(file.id)
-                    confirmTrashContextItem = true
-                })
-            }
+            file = file,
+            actions = actions
         )
     }
     if (confirmTrashContextItem) {
@@ -1526,6 +1580,9 @@ private fun FilesTabRow(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .defaultMinSize(minHeight = 48.dp)
+                        .pressScale(EffectsPhysics.SCALE_NAV_TAB)
+                        .pointerHoverIcon(PointerIcon.Hand)
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
                         .background(fill)
                         .clickable { onTab(tab) }

@@ -27,3 +27,21 @@ val WarmShapes = Shapes(
     large = RoundedCornerShape(18.dp),
     extraLarge = RoundedCornerShape(26.dp)
 )
+
+/** Lavender 3D shapes: organic rounded corners with pill geometry (Design Reference 1). */
+val LavenderShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(26.dp),
+    extraLarge = RoundedCornerShape(32.dp)
+)
+
+/** AMOLED Neon shapes: sleek rounded corners for cards and modern dark panels (Design Reference 3). */
+val AmoledNeonShapes = Shapes(
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(32.dp)
+)

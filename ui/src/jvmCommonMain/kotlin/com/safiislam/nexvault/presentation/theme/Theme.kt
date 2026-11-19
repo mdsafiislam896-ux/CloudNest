@@ -26,13 +26,15 @@ fun NexVaultTheme(
     val base = when (designStyle) {
         DesignStyle.IOS_GLASS -> if (darkTheme) IosDarkColorScheme else IosLightColorScheme
         DesignStyle.WARM -> if (darkTheme) WarmDarkColorScheme else WarmLightColorScheme
+        DesignStyle.LAVENDER_3D -> if (darkTheme) LavenderDarkColorScheme else LavenderLightColorScheme
+        DesignStyle.AMOLED_NEON -> if (darkTheme) AmoledNeonDarkColorScheme else AmoledNeonLightColorScheme
         DesignStyle.COLORFUL -> {
             val scheme = platformColorScheme(darkTheme, dynamicColor)
                 ?: if (darkTheme) NexVaultDarkColorScheme else NexVaultLightColorScheme
             if (dynamicColor) scheme else scheme.withAccent(accent, darkTheme)
         }
     }
-    val colorScheme = if (darkTheme && amoled && designStyle != DesignStyle.IOS_GLASS) {
+    val colorScheme = if (darkTheme && amoled && designStyle != DesignStyle.IOS_GLASS && designStyle != DesignStyle.AMOLED_NEON) {
         base.copy(
             background = Color.Black,
             surface = Color.Black,
@@ -54,11 +56,15 @@ fun NexVaultTheme(
                 DesignStyle.IOS_GLASS -> IosTypography
                 DesignStyle.WARM -> WarmTypography
                 DesignStyle.COLORFUL -> NexVaultTypography
+                DesignStyle.LAVENDER_3D -> LavenderTypography
+                DesignStyle.AMOLED_NEON -> AmoledNeonTypography
             },
             shapes = when (designStyle) {
                 DesignStyle.IOS_GLASS -> IosShapes
                 DesignStyle.WARM -> WarmShapes
                 DesignStyle.COLORFUL -> NexVaultShapes
+                DesignStyle.LAVENDER_3D -> LavenderShapes
+                DesignStyle.AMOLED_NEON -> AmoledNeonShapes
             },
             content = content
         )

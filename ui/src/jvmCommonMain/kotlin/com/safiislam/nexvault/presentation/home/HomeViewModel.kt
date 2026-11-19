@@ -13,6 +13,8 @@ import com.safiislam.nexvault.data.local.dao.FileDao
 import com.safiislam.nexvault.data.repository.ActiveChannel
 import com.safiislam.nexvault.domain.model.BackupTrigger
 import com.safiislam.nexvault.domain.model.DriveChannel
+import com.safiislam.nexvault.domain.model.DriveFile
+import com.safiislam.nexvault.domain.model.DriveFolder
 import com.safiislam.nexvault.domain.model.StorageSlice
 import com.safiislam.nexvault.domain.repository.BackupRepository
 import com.safiislam.nexvault.domain.repository.ChannelRepository
@@ -21,9 +23,12 @@ import com.safiislam.nexvault.domain.repository.SettingsRepository
 import com.safiislam.nexvault.domain.repository.SyncRepository
 import com.safiislam.nexvault.domain.repository.TelegramAuthRepository
 import com.safiislam.nexvault.domain.repository.TransferRepository
+import com.safiislam.nexvault.domain.repository.TrashRepository
+import com.safiislam.nexvault.domain.usecase.MakeAvailableOfflineUseCase
 import com.safiislam.nexvault.presentation.common.UiText
 import com.safiislam.nexvault.presentation.common.toUiText
 import com.safiislam.nexvault.resources.Res
+import com.safiislam.nexvault.resources.files_queued_for_download
 import com.safiislam.nexvault.resources.home_backing_up_new_files
 import com.safiislam.nexvault.resources.home_nothing_new_to_back_up
 import com.safiislam.nexvault.resources.home_queued_files
@@ -62,7 +67,9 @@ class HomeViewModel(
     private val fileDao: FileDao,
     private val activeChannel: ActiveChannel,
     private val channelRepository: ChannelRepository,
-    private val powerMonitor: PowerMonitor
+    private val powerMonitor: PowerMonitor,
+    private val trashRepository: TrashRepository,
+    private val makeAvailableOffline: MakeAvailableOfflineUseCase
 ) : ViewModel() {
 
     private val missingPermissions = MutableStateFlow(permissionChecker.missingCritical())
@@ -228,9 +235,14 @@ class HomeViewModel(
     fun moveToTrash(ids: List<String>) {
         if (ids.isEmpty()) return
         viewModelScope.launch {
-            fileDao.moveToTrash(ids, System.currentTimeMillis())
-            fileDao.markPendingPublish(ids)
-            _messages.tryEmit(UiText.Plain("Moved ${ids.size} duplicate file(s) to Trash"))
+            when (val result = trashRepository.moveFilesToTrash(ids)) {
+                is AppResult.Success -> {
+                    _messages.tryEmit(UiText.Plain("Moved ${ids.size} file(s) to Trash"))
+                }
+                is AppResult.Failure -> {
+                    _messages.tryEmit(result.error.toUiText())
+                }
+            }
         }
     }
 
@@ -285,6 +297,59 @@ class HomeViewModel(
 
     fun cancelBackup(sessionId: String) {
         viewModelScope.launch { backupRepository.cancelBackup(sessionId) }
+    }
+
+    fun downloadFile(file: DriveFile) {
+        viewModelScope.launch {
+            if (transferRepository.enqueueDownload(file.id) is AppResult.Success) {
+                _messages.tryEmit(UiText.Resource(Res.string.files_queued_for_download, 1))
+            }
+        }
+    }
+
+    fun setAvailableOffline(file: DriveFile, offline: Boolean) {
+        viewModelScope.launch {
+            val queued = makeAvailableOffline(listOf(file.id), emptyList(), offline)
+            if (queued > 0) {
+                _messages.tryEmit(UiText.Resource(Res.string.files_queued_for_download, queued))
+            }
+        }
+    }
+
+    fun moveFile(fileId: String, targetFolderId: String?) {
+        viewModelScope.launch {
+            fileRepository.moveFiles(listOf(fileId), targetFolderId)
+        }
+    }
+
+    fun copyFile(fileId: String, targetFolderId: String?) {
+        viewModelScope.launch {
+            fileRepository.copyFiles(listOf(fileId), targetFolderId)
+        }
+    }
+
+    suspend fun childFolders(parentId: String?): List<DriveFolder> =
+        fileRepository.observeFolders(parentId, showHidden = true, showArchived = true).first()
+
+    suspend fun createFolderIn(parentId: String?, name: String): Boolean =
+        when (val result = fileRepository.createFolder(parentId, name)) {
+            is AppResult.Success -> true
+            is AppResult.Failure -> {
+                _messages.tryEmit(result.error.toUiText())
+                false
+            }
+        }
+
+    fun toggleFavorite(file: DriveFile) {
+        viewModelScope.launch {
+            fileRepository.setFilesFavorite(listOf(file.id), !file.isFavorite)
+        }
+    }
+
+    fun renameFile(fileId: String, newName: String) {
+        viewModelScope.launch {
+            fileRepository.renameFile(fileId, newName)
+        }
     }
 
     fun lockNow() = appLockManager.lockNow()

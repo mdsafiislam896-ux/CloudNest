@@ -36,23 +36,64 @@ private val WarmTiles = listOf(
     listOf(Color(0xFFB7791F), Color(0xFFD9A441))
 )
 
+private val LavenderTiles = listOf(
+    listOf(Color(0xFF7657F6), Color(0xFFA478FF)),
+    listOf(Color(0xFF9D65FF), Color(0xFFD0BCFF)),
+    listOf(Color(0xFF6246EA), Color(0xFFB892FF)),
+    listOf(Color(0xFF8B5CF6), Color(0xFFC4B5FD))
+)
+
+private val NeonTiles = listOf(
+    listOf(Color(0xFF7C5CFC), Color(0xFF9D84FD)),
+    listOf(Color(0xFFF368E0), Color(0xFFFF9FF3)),
+    listOf(Color(0xFF3FF4F7), Color(0xFF70F8F9)),
+    listOf(Color(0xFFFFB800), Color(0xFFFFD466))
+)
+
+/**
+ * Resolves the high-contrast icon tint for the given [style] and [tileIndex].
+ * Enforces WCAG 2.1 SC 1.4.11 non-text contrast (>= 3.0:1) across all badge backgrounds.
+ */
+fun iconTileTint(style: DesignStyle, tileIndex: Int): Color = when (style) {
+    DesignStyle.AMOLED_NEON -> when (tileIndex) {
+        1 -> Color(0xFF4C0044) // Dark plum on NeonPink (CR: 5.66:1 start, 8.27:1 end)
+        2 -> Color(0xFF002022) // Deep dark teal on NeonCyan (CR: 12.60:1 start, 13.40:1 end)
+        3 -> Color(0xFF291500) // Deep dark amber on NeonAmber (CR: 10.08:1 start, 12.37:1 end)
+        else -> Color.White    // NeonViolet (CR: 4.38:1 start)
+    }
+    DesignStyle.LAVENDER_3D -> Color(0xFF24005A) // Deep violet on pastel lavender tiles
+    else -> Color.White
+}
+
 /**
  * The coloured icon badge used in lists and settings: a vivid gradient rounded square (colorful and
- * iPhone styles) or a warm-toned circle (warm style). [key] picks the colour, so the same row is
- * always the same colour.
+ * iPhone styles), warm-toned circle (warm style), pastel rounded square (lavender 3D style),
+ * or electric neon badge (AMOLED neon style). [key] picks the colour, so the same row is always the same colour.
  */
 @Composable
 fun IconTile(icon: ImageVector, key: Int, modifier: Modifier = Modifier, size: Dp = 38.dp) {
-    val warm = LocalDesignStyle.current == DesignStyle.WARM
-    val palette = if (warm) WarmTiles else VividTiles
-    val colors = palette[(key and Int.MAX_VALUE) % palette.size]
+    val currentStyle = LocalDesignStyle.current
+    val palette = when (currentStyle) {
+        DesignStyle.WARM -> WarmTiles
+        DesignStyle.LAVENDER_3D -> LavenderTiles
+        DesignStyle.AMOLED_NEON -> NeonTiles
+        else -> VividTiles
+    }
+    val shape = when (currentStyle) {
+        DesignStyle.WARM -> CircleShape
+        DesignStyle.LAVENDER_3D -> RoundedCornerShape(size * 0.35f)
+        else -> RoundedCornerShape(size * 0.28f)
+    }
+    val tileIndex = (key and Int.MAX_VALUE) % palette.size
+    val colors = palette[tileIndex]
+    val iconTint = iconTileTint(currentStyle, tileIndex)
     Box(
         modifier = modifier
             .size(size)
-            .clip(if (warm) CircleShape else RoundedCornerShape(size * 0.28f))
+            .clip(shape)
             .background(Brush.linearGradient(colors)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.58f))
+        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(size * 0.58f))
     }
 }

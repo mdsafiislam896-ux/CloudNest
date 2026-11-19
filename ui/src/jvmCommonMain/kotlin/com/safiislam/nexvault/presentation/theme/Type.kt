@@ -77,3 +77,31 @@ val IosTypography: Typography = NexVaultTypography.let { t ->
         titleMedium = t.titleMedium.copy(fontWeight = semi)
     )
 }
+
+/** Lavender 3D style: smooth, balanced, friendly modern typography (Design Reference 1). */
+val LavenderTypography: Typography = NexVaultTypography.let { t ->
+    val medium = androidx.compose.ui.text.font.FontWeight.Medium
+    val semiBold = androidx.compose.ui.text.font.FontWeight.SemiBold
+    t.copy(
+        headlineLarge = t.headlineLarge.copy(fontWeight = semiBold),
+        headlineMedium = t.headlineMedium.copy(fontWeight = semiBold),
+        headlineSmall = t.headlineSmall.copy(fontWeight = semiBold),
+        titleLarge = t.titleLarge.copy(fontWeight = semiBold),
+        titleMedium = t.titleMedium.copy(fontWeight = medium)
+    )
+}
+
+/** AMOLED Neon style: high-contrast, punchy bold weights for dark UI clarity (Design Reference 3). */
+val AmoledNeonTypography: Typography = NexVaultTypography.let { t ->
+    val bold = androidx.compose.ui.text.font.FontWeight.Bold
+    val extraBold = androidx.compose.ui.text.font.FontWeight.ExtraBold
+    t.copy(
+        displayLarge = t.displayLarge.copy(fontWeight = extraBold),
+        displayMedium = t.displayMedium.copy(fontWeight = bold),
+        headlineLarge = t.headlineLarge.copy(fontWeight = bold),
+        headlineMedium = t.headlineMedium.copy(fontWeight = bold),
+        headlineSmall = t.headlineSmall.copy(fontWeight = bold),
+        titleLarge = t.titleLarge.copy(fontWeight = bold),
+        titleMedium = t.titleMedium.copy(fontWeight = bold)
+    )
+}
